@@ -1,0 +1,3598 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>KindleForge • AI Book Studio</title>
+    <script src="https://cdn.tailwindcss.com"></script>
+    <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.5.1/css/all.min.css">
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/jszip/3.10.1/jszip.min.js"></script>
+    <style>
+        @import url('https://fonts.googleapis.com/css2?family=EB+Garamond:wght@400;500;600&amp;family=Inter:wght@400;500;600&amp;display=swap');
+        
+        :root {
+            --paper: #f8f1e3;
+            --ink: #2c2522;
+        }
+        
+        .book-preview {
+            font-family: 'EB Garamond', Georgia, serif;
+            background-color: #f8f1e3;
+            color: #2c2522;
+            box-shadow: 0 10px 30px -10px rgb(0 0 0 / 0.3), 
+                       0 0 0 1px #d4c4a8,
+                       inset 0 0 80px rgba(139, 119, 101, 0.06);
+            border: 1px solid #d4c4a8;
+        }
+        
+        .book-preview .page-content {
+            font-size: 15.5px;
+            line-height: 1.75;
+            max-width: 42ch;
+            margin: 0 auto;
+        }
+        
+        .book-preview h1 {
+            font-family: 'EB Garamond', Georgia, serif;
+            font-weight: 600;
+            letter-spacing: -0.015em;
+        }
+        
+        .kindle-frame {
+            background: #f8f1e3;
+            box-shadow: 
+                0 25px 50px -12px rgb(0 0 0 / 0.4),
+                0 0 0 12px #3f2e23,
+                0 0 0 16px #2c2522;
+            border-radius: 8px;
+            position: relative;
+        }
+        
+        .kindle-frame::before {
+            content: '';
+            position: absolute;
+            top: 12px;
+            left: 12px;
+            right: 12px;
+            bottom: 12px;
+            border: 1px solid #d4c4a8;
+            border-radius: 4px;
+            pointer-events: none;
+        }
+        
+        .page-text {
+            text-align: justify;
+            hyphens: auto;
+        }
+        
+        .ai-box {
+            transition: all 0.2s cubic-bezier(0.4, 0, 0.2, 1);
+        }
+        
+        .ai-box:hover {
+            box-shadow: 0 10px 15px -3px rgb(0 0 0 / 0.1), 0 4px 6px -4px rgb(0 0 0 / 0.1);
+        }
+        
+        .nav-item {
+            transition: all 0.1s ease;
+        }
+        
+        .nav-item.active {
+            background-color: #3f2e23;
+            color: white;
+            border-radius: 6px;
+        }
+        
+        .demo-image {
+            transition: transform 0.2s ease, box-shadow 0.2s ease;
+        }
+        
+        .demo-image:hover {
+            transform: scale(1.015);
+            box-shadow: 0 20px 25px -5px rgb(0 0 0 / 0.1), 0 8px 10px -6px rgb(0 0 0 / 0.1);
+        }
+        
+        .section-label {
+            font-size: 10px;
+            letter-spacing: 0.5px;
+            font-weight: 600;
+            color: #6b5c51;
+        }
+        
+        .book-page {
+            min-height: 620px;
+            padding: 52px 48px;
+        }
+        
+        .serif {
+            font-family: 'EB Garamond', Georgia, serif;
+        }
+        
+        .control-label {
+            font-size: 11px;
+            font-weight: 600;
+            color: #6b5c51;
+            letter-spacing: 0.3px;
+        }
+        
+        .regen-btn {
+            transition: all .1s ease;
+        }
+        
+        .regen-btn:active {
+            transform: scale(0.96);
+        }
+        
+        .page-list-item {
+            cursor: pointer;
+        }
+        
+        .page-list-item:hover {
+            background-color: #f4ede4;
+        }
+        
+        .page-list-item.active {
+            background-color: #e8d9c2;
+            border-left: 3px solid #3f2e23;
+        }
+        
+        .illustration-container {
+            box-shadow: 0 10px 15px -3px rgb(0 0 0 / 0.15);
+            border: 1px solid #d4c4a8;
+        }
+        
+        .toast {
+            animation: toast-pop 0.2s ease forwards;
+        }
+        
+        @keyframes toast-pop {
+            from { transform: translateY(10px); opacity: 0; }
+            to { transform: translateY(0); opacity: 1; }
+        }
+        
+        .kindle-text {
+            font-feature-settings: "kern" "liga" "clig";
+        }
+
+        .layout-chip {
+            font-size: 10px;
+            padding: 4px 8px;
+            border-radius: 999px;
+            border: 1px solid #d4c4a8;
+            background: #fff;
+            color: #6b5c51;
+            cursor: pointer;
+            line-height: 1.2;
+        }
+        .layout-chip:hover { background: #f8f1e3; }
+        .layout-chip.active {
+            background: #3f2e23;
+            color: #fff;
+            border-color: #3f2e23;
+        }
+        .slot-chip {
+            font-size: 10px;
+            padding: 3px 8px;
+            border-radius: 6px;
+            border: 1px solid #d4c4a8;
+            background: #fff;
+            color: #6b5c51;
+            cursor: pointer;
+        }
+        .slot-chip.active {
+            background: #3f2e23;
+            color: #fff;
+            border-color: #3f2e23;
+        }
+        .preview-img {
+            width: 100%;
+            object-fit: cover;
+            border-radius: 8px;
+            border: 1px solid #d4c4a8;
+            box-shadow: 0 10px 15px -3px rgb(0 0 0 / 0.15);
+            cursor: pointer;
+            background: #efe6d6;
+        }
+        .preview-img-empty {
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            background: #efe6d6;
+            border: 1px dashed #d4c4a8;
+            border-radius: 8px;
+            color: #a08f7b;
+            font-size: 11px;
+            min-height: 100px;
+        }
+        .layout-two-side { display: grid; grid-template-columns: 1fr 1fr; gap: 10px; }
+        .layout-split { display: grid; grid-template-columns: 1fr 1fr; gap: 16px; align-items: start; }
+        .layout-three { display: grid; grid-template-columns: 1fr 1fr 1fr; gap: 8px; }
+        .layout-stack { display: flex; flex-direction: column; gap: 10px; }
+
+        .custom-canvas {
+            position: relative;
+            width: 100%;
+            min-height: 520px;
+            background:
+                linear-gradient(to right, rgba(212,196,168,0.25) 1px, transparent 1px),
+                linear-gradient(to bottom, rgba(212,196,168,0.25) 1px, transparent 1px);
+            background-size: 10% 10%;
+            border: 1px dashed #d4c4a8;
+            border-radius: 6px;
+            overflow: hidden;
+            user-select: none;
+        }
+        .custom-box {
+            position: absolute;
+            box-sizing: border-box;
+            border: 2px solid transparent;
+            border-radius: 8px;
+            overflow: hidden;
+            background: #efe6d6;
+            box-shadow: 0 6px 14px -6px rgb(0 0 0 / 0.25);
+            cursor: move;
+            touch-action: none;
+        }
+        .custom-box.selected {
+            border-color: #3f2e23;
+            z-index: 5;
+            box-shadow: 0 0 0 2px rgba(63,46,35,0.15), 0 8px 18px -6px rgb(0 0 0 / 0.3);
+        }
+        .custom-box img {
+            width: 100%;
+            height: 100%;
+            object-fit: cover;
+            display: block;
+            pointer-events: none;
+        }
+        .custom-box-empty {
+            width: 100%;
+            height: 100%;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            text-align: center;
+            font-size: 11px;
+            color: #a08f7b;
+            padding: 8px;
+            pointer-events: none;
+        }
+        .custom-box-badge {
+            position: absolute;
+            top: 4px;
+            left: 4px;
+            background: rgba(63,46,35,0.88);
+            color: #fff;
+            font-size: 10px;
+            font-weight: 600;
+            padding: 1px 6px;
+            border-radius: 999px;
+            pointer-events: none;
+            z-index: 2;
+        }
+        .custom-resize {
+            position: absolute;
+            right: 2px;
+            bottom: 2px;
+            width: 14px;
+            height: 14px;
+            background: #3f2e23;
+            border: 2px solid #f8f1e3;
+            border-radius: 3px;
+            cursor: nwse-resize;
+            z-index: 3;
+        }
+        .custom-text-box {
+            position: absolute;
+            box-sizing: border-box;
+            border: 2px dashed rgba(63,46,35,0.35);
+            border-radius: 6px;
+            padding: 8px 10px;
+            overflow: auto;
+            background: rgba(248,241,227,0.92);
+            cursor: move;
+            touch-action: none;
+        }
+        .custom-text-box.selected {
+            border-style: solid;
+            border-color: #3f2e23;
+            z-index: 4;
+        }
+        .custom-text-box .page-text {
+            pointer-events: none;
+            word-wrap: break-word;
+        }
+        .custom-hint {
+            font-size: 9px;
+            color: #8a7566;
+            margin-top: 6px;
+            text-align: center;
+        }
+        .style-row {
+            display: flex;
+            flex-wrap: wrap;
+            gap: 6px;
+            align-items: center;
+        }
+        .style-row label {
+            font-size: 9px;
+            color: #6b5c51;
+            font-weight: 600;
+            display: flex;
+            flex-direction: column;
+            gap: 2px;
+        }
+        .style-row select {
+            font-size: 11px;
+            border: 1px solid #d4c4a8;
+            border-radius: 6px;
+            background: #fff;
+            color: #2c2522;
+            padding: 3px 6px;
+            min-width: 0;
+        }
+        .style-chip-btn {
+            font-size: 10px;
+            padding: 3px 8px;
+            border-radius: 6px;
+            border: 1px solid #d4c4a8;
+            background: #fff;
+            color: #6b5c51;
+            cursor: pointer;
+        }
+        .style-chip-btn.active {
+            background: #3f2e23;
+            color: #fff;
+            border-color: #3f2e23;
+        }
+        .kindle-body-text {
+            color: #2c2522;
+            hyphens: auto;
+        }
+    </style>
+</head>
+<body class="bg-[#f4ede4] text-[#2c2522]">
+    <div class="flex flex-col h-screen">
+        <!-- Top Bar -->
+        <div class="bg-white border-b border-[#d4c4a8] px-6 py-3 flex items-center justify-between">
+            <div class="flex items-center gap-x-3">
+                <div class="flex items-center gap-x-2">
+                    <i class="fa-solid fa-book text-3xl text-[#3f2e23]"></i>
+                    <div>
+                        <span class="font-semibold text-2xl tracking-tighter">KindleForge</span>
+                        <span class="text-[10px] text-[#8a7566] ml-1 font-medium">v0.7</span>
+                    </div>
+                </div>
+                <div class="h-5 w-px bg-[#d4c4a8]"></div>
+                <div class="flex items-center gap-x-2 text-sm">
+                    <input id="book-title" 
+                           class="font-semibold text-lg bg-transparent border-0 focus:ring-0 p-0 w-72 serif" 
+                           value="The Fox and the Forgotten Star">
+                    <input id="book-author" 
+                           class="text-sm text-[#6b5c51] bg-transparent border-0 focus:ring-0 p-0 w-44" 
+                           value="by Elara Voss">
+                </div>
+            </div>
+            
+            <div class="flex items-center gap-x-2">
+                <!-- Export -->
+                <button onclick="exportAsHTML()" 
+                        class="px-4 py-1.5 text-sm font-medium rounded-lg bg-white border border-[#d4c4a8] hover:bg-[#f8f1e3] flex items-center gap-x-2">
+                    <i class="fa-solid fa-file-export"></i>
+                    <span>Export HTML</span>
+                </button>
+                
+                <button onclick="exportEPUB()" 
+                        class="px-4 py-1.5 text-sm font-medium rounded-lg bg-[#3f2e23] text-white hover:bg-[#2c2522] flex items-center gap-x-2">
+                    <i class="fa-solid fa-file-zip"></i>
+                    <span>Export EPUB</span>
+                </button>
+                
+                <div class="h-6 w-px bg-[#d4c4a8] mx-1"></div>
+
+                <button onclick="saveProjectFile()" 
+                        class="px-3 py-1.5 text-sm font-medium rounded-lg border border-[#d4c4a8] hover:bg-white flex items-center gap-x-2 text-[#6b5c51]"
+                        title="Download a portable .json project (book + images). Take this file to another PC.">
+                    <i class="fa-solid fa-floppy-disk"></i>
+                    <span>Save Project</span>
+                </button>
+
+                <button onclick="triggerLoadProject()" 
+                        class="px-3 py-1.5 text-sm font-medium rounded-lg border border-[#d4c4a8] hover:bg-white flex items-center gap-x-2 text-[#6b5c51]"
+                        title="Open a previously saved KindleForge .json project">
+                    <i class="fa-solid fa-folder-open"></i>
+                    <span>Load Project</span>
+                </button>
+                <input type="file" id="project-file-input" accept=".json,application/json" class="hidden" onchange="loadProjectFromFile(this)">
+                
+                <div class="h-6 w-px bg-[#d4c4a8] mx-1"></div>
+                
+                <button onclick="loadDemoBook()" 
+                        class="px-3 py-1.5 text-sm font-medium rounded-lg border border-[#d4c4a8] hover:bg-white flex items-center gap-x-2 text-[#6b5c51]">
+                    <i class="fa-solid fa-magic"></i>
+                    <span>Load Demo</span>
+                </button>
+
+                <button onclick="embedDemoImagesQuick()" 
+                        class="px-3 py-1.5 text-sm font-medium rounded-lg border border-[#d4c4a8] hover:bg-white flex items-center gap-x-2 text-[#6b5c51]" title="Select the 3 demo jpgs from the generated folder to embed them properly (works on file://)">
+                    <i class="fa-solid fa-images"></i>
+                    <span>Embed Demo Images</span>
+                </button>
+                
+                <button onclick="embedImagesForExport()" 
+                        class="px-3 py-1.5 text-sm font-medium rounded-lg border border-[#d4c4a8] hover:bg-white flex items-center gap-x-2 text-[#6b5c51]" title="Try to auto-embed any relative images (often fails on file://)">
+                    <i class="fa-solid fa-link"></i>
+                    <span>Make Portable</span>
+                </button>
+                
+                <button onclick="resetBook()" 
+                        class="px-3 py-1.5 text-sm font-medium rounded-lg border border-[#d4c4a8] hover:bg-white flex items-center gap-x-2 text-red-700">
+                    <i class="fa-solid fa-trash"></i>
+                </button>
+
+                <button onclick="showSettings()" 
+                        class="px-3 py-1.5 text-sm font-medium rounded-lg border border-[#d4c4a8] hover:bg-white flex items-center gap-x-2 text-[#6b5c51]">
+                    <i class="fa-solid fa-cog"></i>
+                    <span>Settings</span>
+                </button>
+            </div>
+        </div>
+        
+        <div class="flex flex-1 overflow-hidden">
+            
+            <!-- LEFT: PAGE OUTLINE -->
+            <div class="w-72 bg-white border-r border-[#d4c4a8] flex flex-col">
+                <div class="px-4 py-3 border-b border-[#d4c4a8] flex items-center justify-between bg-[#f8f1e3]">
+                    <div class="section-label">PAGES</div>
+                    <button onclick="addNewPage()" 
+                            class="text-xs px-2.5 py-1 rounded-md bg-[#3f2e23] text-white flex items-center gap-x-1 hover:bg-black">
+                        <i class="fa-solid fa-plus text-[10px]"></i>
+                        <span class="font-medium text-xs">Add</span>
+                    </button>
+                </div>
+                
+                <div id="page-list" class="flex-1 overflow-y-auto p-2 text-sm">
+                    <!-- Populated by JS -->
+                </div>
+                
+                <div class="p-3 border-t border-[#d4c4a8] bg-[#f8f1e3] text-[11px] text-[#8a7566]">
+                    <div class="flex justify-between">
+                        <div><span id="page-count">0</span> pages</div>
+                        <div class="cursor-pointer hover:text-[#3f2e23]" onclick="showHelp()">How this works →</div>
+                    </div>
+                </div>
+            </div>
+            
+            <!-- CENTER: DIGITAL BOOK PREVIEW -->
+            <div class="flex-1 flex items-center justify-center bg-[#e8d9c2] p-8 overflow-auto">
+                <div class="w-full max-w-[680px]">
+                    <div class="flex items-center justify-between mb-2 px-1">
+                        <div class="flex items-center gap-x-2">
+                            <div class="text-xs uppercase tracking-[1px] font-semibold text-[#6b5c51]">Kindle Preview</div>
+                            <div class="px-2 py-0.5 text-[10px] rounded bg-white/70 text-[#6b5c51] font-mono" id="page-indicator">Page 3 of 5</div>
+                        </div>
+                        <div class="flex gap-x-1">
+                            <button onclick="previousPage()" class="w-8 h-8 flex items-center justify-center rounded hover:bg-white/50 text-[#6b5c51]">
+                                <i class="fa-solid fa-chevron-left"></i>
+                            </button>
+                            <button onclick="nextPage()" class="w-8 h-8 flex items-center justify-center rounded hover:bg-white/50 text-[#6b5c51]">
+                                <i class="fa-solid fa-chevron-right"></i>
+                            </button>
+                        </div>
+                    </div>
+                    
+                    <!-- The actual book page -->
+                    <div id="book-preview" 
+                         class="kindle-frame book-preview mx-auto w-full max-w-[620px] rounded-xl p-2">
+                        
+                        <div class="book-page flex flex-col" style="min-height: 620px;">
+                            
+                            <!-- Page header -->
+                            <div class="flex justify-between items-baseline mb-4">
+                                <div id="preview-page-title" 
+                                     class="serif text-2xl font-semibold tracking-[-0.3px] cursor-pointer"
+                                     onclick="focusPageTitleEditor()">
+                                </div>
+                                <div class="text-xs text-[#8a7566] font-mono" id="preview-page-number"></div>
+                            </div>
+                            
+                            <!-- Layout-driven body (images + text) -->
+                            <div id="preview-body" class="flex-1 flex flex-col"></div>
+                            
+                            <!-- Footer hint -->
+                            <div class="mt-auto pt-4 text-center">
+                                <div class="text-[9px] text-[#a08f7b]">— end of page —</div>
+                            </div>
+                        </div>
+                    </div>
+                    
+                    <div class="text-center mt-3">
+                        <span class="text-[10px] text-[#8a7566]">This preview approximates how it will look on Kindle</span>
+                    </div>
+                </div>
+            </div>
+            
+            <!-- RIGHT: AI GENERATION BOXES -->
+            <div class="w-96 bg-white border-l border-[#d4c4a8] flex flex-col overflow-hidden">
+                <!-- Scrollable content area for the right controls -->
+                <div class="flex-1 overflow-y-auto">
+                
+                <div class="p-4 border-b border-[#d4c4a8]">
+                    <div class="font-semibold text-sm">Current Page</div>
+                    <input id="current-page-title" 
+                           class="w-full mt-1 text-lg font-semibold serif bg-transparent border-0 focus:outline-none p-0" 
+                           placeholder="Page title..."
+                           oninput="updateCurrentPageTitle()">
+                    <div class="control-label mt-3 mb-1">PAGE LAYOUT</div>
+                    <div id="layout-picker" class="flex flex-wrap gap-1.5"></div>
+                    <div id="layout-desc" class="text-[9px] text-[#8a7566] mt-1.5"></div>
+                    <div id="custom-layout-tools" class="hidden mt-2 space-y-1.5">
+                        <div class="flex gap-1.5">
+                            <button type="button" onclick="addCustomImageBox()"
+                                    class="flex-1 text-[10px] px-2 py-1 rounded-lg border border-[#d4c4a8] hover:bg-[#f8f1e3]">
+                                + Image
+                            </button>
+                            <button type="button" onclick="removeCustomImageBox()"
+                                    class="flex-1 text-[10px] px-2 py-1 rounded-lg border border-[#d4c4a8] hover:bg-[#f8f1e3] text-red-700">
+                                − Image
+                            </button>
+                            <button type="button" onclick="addCustomTextBox()"
+                                    class="flex-1 text-[10px] px-2 py-1 rounded-lg border border-[#d4c4a8] hover:bg-[#f8f1e3]">
+                                + Text
+                            </button>
+                            <button type="button" onclick="removeCustomTextBox()"
+                                    class="flex-1 text-[10px] px-2 py-1 rounded-lg border border-[#d4c4a8] hover:bg-[#f8f1e3] text-red-700">
+                                − Text
+                            </button>
+                        </div>
+                        <div class="text-[9px] text-[#8a7566]">
+                            Custom: drag/resize up to <strong>3 images</strong> + <strong>3 text boxes</strong> (great for short rhymes). Click a box to select it.
+                        </div>
+                    </div>
+                </div>
+                
+                <!-- Book-level style notes (used in all generation prompts for consistency) -->
+                <div class="px-4 pb-3">
+                    <div class="control-label mb-1">BOOK STYLE / TONE NOTES (optional)</div>
+                    <textarea id="book-style-notes" rows="1" 
+                              class="w-full text-xs bg-white border border-[#d4c4a8] rounded-lg p-2 focus:outline-none resize-y"
+                              placeholder="e.g. warm whimsical tone, gentle pacing, focus on wonder and small acts of courage"
+                              oninput="saveBookStyleNotes()"></textarea>
+                </div>
+                
+                <!-- TEXT AI -->
+                <div class="p-4 border-b border-[#d4c4a8]">
+                    <div class="flex items-center gap-x-2 mb-2">
+                        <i class="fa-solid fa-font text-[#3f2e23]"></i>
+                        <div>
+                            <div class="font-semibold text-sm">Text</div>
+                            <div class="text-[10px] text-[#8a7566]">AI generation &amp; editing</div>
+                        </div>
+                    </div>
+                    
+                    <div class="ai-box bg-[#f8f1e3] rounded-xl p-3 border border-[#d4c4a8]">
+                        <div class="control-label mb-1">PROMPT TO AI (what the page should be about)</div>
+                        <textarea id="text-prompt" rows="2" 
+                                  class="w-full text-sm bg-white border border-[#d4c4a8] rounded-lg p-2 text-[#3f2e23] focus:outline-none resize-y"
+                                  placeholder="e.g. the fox feels a moment of doubt and courage"></textarea>
+                        <div class="text-[8px] text-[#8a7566] mt-0.5">Uses local Ollama via backend. Result lands in Page text + preview — edit there.</div>
+                        
+                        <div class="flex gap-2 mt-2">
+                            <button onclick="generateText()" 
+                                    class="flex-1 regen-btn px-3 py-1.5 text-xs font-semibold bg-[#3f2e23] text-white rounded-lg hover:bg-black flex items-center justify-center gap-x-1.5">
+                                <i class="fa-solid fa-magic"></i>
+                                <span>GENERATE</span>
+                            </button>
+                            <button onclick="regenerateText()" 
+                                    class="flex-1 regen-btn px-3 py-1.5 text-xs font-semibold bg-white border border-[#d4c4a8] hover:bg-[#f8f1e3] rounded-lg flex items-center justify-center gap-x-1.5">
+                                <i class="fa-solid fa-redo"></i>
+                                <span>REGEN</span>
+                            </button>
+                        </div>
+                        <div class="text-[9px] text-[#8a7566] mt-1.5 text-center">
+                            Prompt → GENERATE → edit Page text below (preview updates live)
+                        </div>
+
+                        <!-- Optional fallback if backend/Ollama is down — collapsed by default -->
+                        <details id="text-chat-fallback" class="mt-2 border border-[#d4c4a8] rounded-lg p-2 bg-white text-xs">
+                            <summary class="font-medium text-[#6b5c51] cursor-pointer text-[10px]">Advanced: chat assist (only if backend is down)</summary>
+                            <div id="text-grok-panel" class="mt-2">
+                                <div class="control-label mb-1">Full request (copy for chat)</div>
+                                <textarea id="text-full-prompt" class="w-full border border-[#d4c4a8] rounded p-1 text-xs h-12 resize-y" readonly></textarea>
+                                <button type="button" onclick="copyTextPrompt()" class="mt-1 text-[10px] px-2 py-0.5 bg-[#3f2e23] text-white rounded">Copy request</button>
+                                <div class="control-label mt-2 mb-1">Or paste story text here → Apply</div>
+                                <textarea id="text-grok-response" class="w-full border border-[#d4c4a8] rounded p-1 text-sm h-16 resize-y" placeholder="Optional: paste text from chat, then Apply"></textarea>
+                                <button type="button" onclick="applyTextResponse()" class="mt-1 w-full text-xs px-3 py-1 bg-green-700 text-white rounded font-semibold">Apply to page</button>
+                            </div>
+                        </details>
+                    </div>
+                    
+                    <div class="mt-3">
+                        <div class="control-label mb-1 flex items-center justify-between">
+                            <div>PAGE TEXT <span class="text-[#8a7566]">(edit here — preview updates live)</span></div>
+                            <button onclick="copyTextToClipboard()" class="text-[10px] text-[#6b5c51] hover:text-[#3f2e23]">
+                                <i class="fa-solid fa-copy mr-0.5"></i>copy
+                            </button>
+                        </div>
+                        <div id="text-slot-row" class="mb-1.5 hidden">
+                            <div id="text-slot-picker" class="flex flex-wrap gap-1.5"></div>
+                            <div class="text-[8px] text-[#8a7566] mt-1">Editing the selected text box (rhyme / caption). Generate fills this slot.</div>
+                        </div>
+                        <div class="mb-2 p-2 rounded-lg border border-[#d4c4a8] bg-[#f8f1e3]">
+                            <div class="control-label mb-1.5">TEXT STYLE <span class="font-normal text-[#8a7566]">(Kindle / print-safe)</span></div>
+                            <div id="text-style-controls" class="style-row"></div>
+                            <div class="text-[8px] text-[#8a7566] mt-1.5">
+                                Serif + body size ≈ standard print/Kindle. Center + large works well for short rhymes.
+                            </div>
+                        </div>
+                        <textarea id="page-text-editor" rows="8"
+                                  class="w-full text-sm border border-[#d4c4a8] rounded-xl p-3 bg-white focus:outline-none"
+                                  oninput="updatePreviewFromEditor()"
+                                  placeholder="Story text for this page. Generate fills this, or type/edit directly."></textarea>
+                    </div>
+                </div>
+                
+                <!-- ILLUSTRATION AI -->
+                <div class="p-4">
+                    <div class="flex items-center gap-x-2 mb-2">
+                        <i class="fa-solid fa-image text-[#3f2e23]"></i>
+                        <div>
+                            <div class="font-semibold text-sm">Illustration</div>
+                            <div class="text-[10px] text-[#8a7566]">One image per page (for now)</div>
+                        </div>
+                    </div>
+                    
+                    <div class="ai-box bg-[#f8f1e3] rounded-xl p-3 border border-[#d4c4a8]">
+                        <div id="image-slot-row" class="mb-2 hidden">
+                            <div class="control-label mb-1">IMAGE SLOT</div>
+                            <div id="image-slot-picker" class="flex flex-wrap gap-1.5"></div>
+                            <div class="text-[8px] text-[#8a7566] mt-1">This layout has multiple images — pick which slot to generate/upload.</div>
+                        </div>
+                        <div class="control-label mb-1">IMAGE PROMPT (describe the illustration)</div>
+                        <textarea id="image-prompt" rows="2" 
+                                  class="w-full text-sm bg-white border border-[#d4c4a8] rounded-lg p-2 focus:outline-none"
+                                  placeholder="e.g. the fox carefully places the star into the old lantern"
+                                  oninput="updateActiveImagePrompt()"></textarea>
+                        <div class="text-[8px] text-[#8a7566] mt-0.5">GENERATE fills the active image slot. Change layout above for multi-image pages.</div>
+                        
+                        <!-- Style presets -->
+                        <div class="mt-2">
+                            <div class="control-label mb-1">STYLE</div>
+                            <div class="flex flex-wrap gap-1.5" id="style-presets">
+                                <!-- Populated by JS -->
+                            </div>
+                        </div>
+                        
+                        <div class="grid grid-cols-2 gap-2 mt-3">
+                            <button onclick="generateIllustration()" 
+                                    class="regen-btn px-3 py-1.5 text-xs font-semibold bg-[#3f2e23] text-white rounded-lg hover:bg-black flex items-center justify-center gap-x-1.5">
+                                <i class="fa-solid fa-magic"></i>
+                                <span>GENERATE</span>
+                            </button>
+                            <button onclick="regenerateIllustration()" 
+                                    class="regen-btn px-3 py-1.5 text-xs font-semibold bg-white border border-[#d4c4a8] hover:bg-[#f8f1e3] rounded-lg flex items-center justify-center gap-x-1.5">
+                                <i class="fa-solid fa-redo"></i>
+                                <span>REGEN</span>
+                            </button>
+                        </div>
+                        <div class="text-[9px] text-[#8a7566] mt-1.5 text-center">
+                            Prompt → GENERATE → image on page (or Upload below)
+                        </div>
+                        
+                        <button onclick="generateVariations()" 
+                                class="mt-2 w-full text-xs py-1 rounded-lg border border-[#d4c4a8] hover:bg-white text-[#6b5c51] flex items-center justify-center gap-x-1.5">
+                            <span>Generate 3 Variations</span>
+                        </button>
+
+                        <!-- Upload / Local image -->
+                        <div class="mt-2 border-t border-[#d4c4a8] pt-2">
+                            <div class="control-label mb-1">OR UPLOAD EXISTING IMAGE</div>
+                            <label class="block w-full cursor-pointer">
+                                <div class="text-xs px-3 py-1.5 rounded-lg border border-dashed border-[#d4c4a8] hover:bg-white text-center flex items-center justify-center gap-x-2 text-[#6b5c51]">
+                                    <i class="fa-solid fa-upload"></i>
+                                    <span>Choose file from disk (png/jpg)</span>
+                                </div>
+                                <input type="file" accept="image/*" class="hidden" onchange="uploadIllustration(this)">
+                            </label>
+                            <div class="text-[9px] text-[#8a7566] mt-1 text-center">Drag &amp; drop also works on the image area below</div>
+                        </div>
+                    </div>
+                    
+                    <!-- Current Illustration -->
+                    <div class="mt-3">
+                        <div class="control-label mb-1 flex justify-between items-center">
+                            <div>CURRENT ILLUSTRATION</div>
+                            <button onclick="removeIllustration()" 
+                                    class="text-red-600 text-[10px] hover:underline">remove</button>
+                        </div>
+                        
+                        <div id="current-illustration-container" 
+                             class="border border-[#d4c4a8] rounded-xl overflow-hidden bg-white aspect-video flex items-center justify-center cursor-pointer"
+                             onclick="enlargeCurrentIllustration()"
+                             ondrop="dropIllustration(event)" ondragover="allowDrop(event)" ondragleave="this.classList.remove('!border-[#3f2e23]')">
+                            <img id="current-illustration" class="max-h-full max-w-full object-contain" style="display: none;">
+                            <div id="illustration-placeholder" class="text-center text-xs text-[#8a7566] p-4">
+                                <i class="fa-solid fa-image text-2xl mb-2 opacity-40"></i>
+                                <div>No illustration yet</div>
+                                <div class="text-[10px] mt-0.5">Generate one on the right or drop image here</div>
+                            </div>
+                        </div>
+                        <div id="illustration-filename" class="text-[10px] text-center text-[#8a7566] mt-1 truncate"></div>
+                        <div class="text-[9px] text-center text-[#8a7566] mt-1">Use "Embed Demo Images" button or Upload to add generated images</div>
+                    </div>
+                </div>
+            </div> <!-- close scroll container -->
+                
+                <div class="p-3 border-t border-[#d4c4a8] bg-[#f8f1e3]">
+                    <div class="text-[10px] text-center text-[#8a7566]">
+                        <strong>Pro tip:</strong> For best results, describe your scene in chat with me. 
+                        I'll generate real images using AI and help you bring them in.
+                    </div>
+                </div>
+            </div>
+            
+        </div>
+    </div>
+    
+    <!-- Toast container -->
+    <div id="toast-container" class="fixed bottom-4 right-4 z-50 space-y-2"></div>
+    
+    <!-- Image modal -->
+    <div id="image-modal" onclick="closeImageModal()" class="hidden fixed inset-0 bg-black/70 flex items-center justify-center z-[100]">
+        <div onclick="event.stopImmediatePropagation()" class="max-w-[90vw] max-h-[90vh]">
+            <img id="modal-image" class="max-w-full max-h-[85vh] rounded-xl shadow-2xl">
+            <div class="text-center text-white text-xs mt-3 opacity-75">Click anywhere to close</div>
+        </div>
+    </div>
+    
+    <!-- Settings modal -->
+    <div id="settings-modal" onclick="hideSettings()" class="hidden fixed inset-0 bg-black/70 flex items-center justify-center z-[100]">
+        <div onclick="event.stopImmediatePropagation()" class="bg-white rounded-2xl p-6 w-full max-w-md mx-4 shadow-2xl">
+            <div class="flex justify-between items-center mb-4">
+                <h2 class="text-xl font-semibold">Settings</h2>
+                <button onclick="hideSettings()" class="text-[#8a7566] hover:text-[#3f2e23]">
+                    <i class="fa-solid fa-times text-xl"></i>
+                </button>
+            </div>
+            
+            <div class="space-y-4">
+                <div>
+                    <label class="block text-sm font-medium text-[#6b5c51] mb-1">Local Backend URL</label>
+                    <input id="backend-url" type="text" class="w-full border border-[#d4c4a8] rounded-lg p-2 text-sm" value="http://localhost:8001" placeholder="http://localhost:8001">
+                    <p class="text-[10px] text-[#8a7566] mt-1">Run the backend with <code>cd backend && uvicorn main:app --reload --port 8001</code>. This enables local model calls (no xAI key needed).</p>
+                </div>
+                
+                <div>
+                    <label class="block text-sm font-medium text-[#6b5c51] mb-1">Ollama Model (for text, if using local)</label>
+                    <input id="ollama-model" type="text" class="w-full border border-[#d4c4a8] rounded-lg p-2 text-sm" value="llama3.2" placeholder="llama3.2">
+                    <p class="text-[10px] text-[#8a7566] mt-1">Run Ollama locally and pull a small model: <code>ollama pull llama3.2</code> (good for preschool stories).</p>
+                </div>
+                
+                <div>
+                    <label class="block text-sm font-medium text-[#6b5c51] mb-1">xAI API Key (optional fallback for direct text)</label>
+                    <input id="xai-api-key" type="password" class="w-full border border-[#d4c4a8] rounded-lg p-2 text-sm" placeholder="xai-...">
+                    <p class="text-[10px] text-[#8a7566] mt-1">Only if you want to bypass local backend. Get at <a href="https://x.ai/api" target="_blank" class="underline">x.ai/api</a>.</p>
+                </div>
+                
+                <div class="flex gap-2 pt-2">
+                    <button onclick="saveSettings()" class="flex-1 px-4 py-2 bg-[#3f2e23] text-white rounded-lg text-sm font-medium hover:bg-black">
+                        Save
+                    </button>
+                    <button onclick="clearApiKey()" class="px-4 py-2 border border-[#d4c4a8] rounded-lg text-sm hover:bg-[#f8f1e3]">
+                        Clear Key
+                    </button>
+                    <button onclick="testBackend()" class="px-4 py-2 border border-[#d4c4a8] rounded-lg text-sm hover:bg-[#f8f1e3]">
+                        Test Backend
+                    </button>
+                </div>
+            </div>
+            
+            <div class="mt-4 pt-3 border-t border-[#d4c4a8] text-[10px] text-[#8a7566]">
+                Text generation now happens directly in the app using your key. Images still use this chat (I generate with tools, you bring them in with Embed/Upload).
+            </div>
+        </div>
+    </div>
+    
+    <script>
+        // Tailwind script
+        function initTailwind() {
+            document.documentElement.style.setProperty('--accent', '#3f2e23');
+        }
+        
+        let book = {
+            title: "The Fox and the Forgotten Star",
+            author: "Elara Voss",
+            pages: []
+        };
+        
+        let currentPageIndex = 0;
+        let activeImageSlot = 0; // which image slot is selected for gen/upload
+        let activeTextSlot = 0;  // which text box is selected (custom layout)
+        let xaiApiKey = '';  // loaded from localStorage
+        let customDrag = null; // freeform drag/resize state
+        
+        const stylePresets = [
+            "Whimsical Storybook", "Soft Watercolor", "Detailed Pen & Ink", 
+            "Magical Realism", "Cozy Autumn", "Vintage Children's"
+        ];
+
+        // Children's-book style page formats (slots = image count; custom is 1–3 freeform)
+        const PAGE_LAYOUTS = {
+            'text-only':   { id: 'text-only',   label: 'Text only',     slots: 0, desc: 'Prose / chapter page' },
+            'image-top':   { id: 'image-top',   label: 'Image + text',  slots: 1, desc: 'Classic: picture on top, words below' },
+            'image-bottom':{ id: 'image-bottom',label: 'Text + image',  slots: 1, desc: 'Words first, picture under' },
+            'image-only':  { id: 'image-only',  label: 'Full image',    slots: 1, desc: 'Splash, cover, or silent page' },
+            'split':       { id: 'split',       label: 'Side by side',  slots: 1, desc: 'Image left, text right' },
+            'two-stack':   { id: 'two-stack',   label: '2 stacked',     slots: 2, desc: 'Two pictures top-to-bottom + text' },
+            'two-side':    { id: 'two-side',    label: '2 side-by-side',slots: 2, desc: 'Diptych / two scenes + text' },
+            'three-row':   { id: 'three-row',   label: '3 panels',      slots: 3, desc: 'Comic strip / sequence + text' },
+            'custom':      { id: 'custom',      label: 'Custom',        slots: 3, freeform: true, desc: 'Drag & resize up to 3 images + 3 text boxes (rhymes!)' },
+        };
+        const DEFAULT_LAYOUT = 'image-top';
+        const CUSTOM_DEFAULT_FRAMES = [
+            { x: 8, y: 6, w: 84, h: 42 },
+            { x: 8, y: 6, w: 42, h: 38 },
+            { x: 54, y: 6, w: 38, h: 38 },
+        ];
+        // Short rhyme-friendly text frames (stacked strips when multiple)
+        const CUSTOM_TEXT_DEFAULT = { x: 8, y: 52, w: 84, h: 42 };
+
+        // Kindle / print-aligned text styles (maps to web preview + EPUB CSS)
+        // Sizes roughly: sm≈10–11pt, md≈12pt body, lg≈14pt, xl≈16–18pt kids
+        const TEXT_STYLE_DEFAULTS = {
+            font: 'serif',      // serif body (Bookerly-like) | sans
+            size: 'md',         // sm | md | lg | xl
+            align: 'left',      // left | center | justify
+            weight: 'normal',   // normal | bold
+            style: 'normal',    // normal | italic
+            leading: 'normal',  // tight | normal | loose
+        };
+        const TEXT_SIZE_MAP = {
+            sm: { px: 13, em: '0.92em', label: 'Small' },
+            md: { px: 15.5, em: '1em', label: 'Body' },
+            lg: { px: 18, em: '1.18em', label: 'Large' },
+            xl: { px: 22, em: '1.38em', label: 'XL kids' },
+        };
+        const TEXT_LEADING_MAP = {
+            tight: 1.35,
+            normal: 1.65,
+            loose: 1.9,
+        };
+        const TEXT_FONT_STACK = {
+            // Kindle-safe stacks (devices substitute Bookerly / Caecilia etc.)
+            serif: 'Georgia, "Palatino Linotype", "Times New Roman", serif',
+            sans: 'Arial, "Helvetica Neue", Helvetica, sans-serif',
+        };
+
+        function clamp(n, lo, hi) {
+            return Math.max(lo, Math.min(hi, n));
+        }
+
+        function normalizeTextStyle(raw) {
+            const s = raw && typeof raw === 'object' ? raw : {};
+            const font = s.font === 'sans' ? 'sans' : 'serif';
+            const size = TEXT_SIZE_MAP[s.size] ? s.size : 'md';
+            const align = ['left', 'center', 'justify'].includes(s.align) ? s.align : 'left';
+            const weight = s.weight === 'bold' ? 'bold' : 'normal';
+            const style = s.style === 'italic' ? 'italic' : 'normal';
+            const leading = TEXT_LEADING_MAP[s.leading] ? s.leading : 'normal';
+            return { font, size, align, weight, style, leading };
+        }
+
+        function textStyleToInlineCss(styleObj, opts = {}) {
+            const s = normalizeTextStyle(styleObj);
+            const sizePx = TEXT_SIZE_MAP[s.size]?.px || 15.5;
+            const lh = TEXT_LEADING_MAP[s.leading] || 1.65;
+            const parts = [
+                `font-family:${TEXT_FONT_STACK[s.font]}`,
+                `font-size:${sizePx}px`,
+                `line-height:${lh}`,
+                `text-align:${s.align}`,
+                `font-weight:${s.weight === 'bold' ? '700' : '400'}`,
+                `font-style:${s.style}`,
+                'color:#2c2522',
+            ];
+            if (opts.forEpub) {
+                // EPUB: use em so readers can still scale base font
+                parts[1] = `font-size:${TEXT_SIZE_MAP[s.size]?.em || '1em'}`;
+            }
+            return parts.join(';');
+        }
+
+        function getActiveTextStyle() {
+            const page = currentPage();
+            if (!page) return { ...TEXT_STYLE_DEFAULTS };
+            if (isCustomLayout(page) && page.texts?.length) {
+                if (activeTextSlot >= page.texts.length) activeTextSlot = 0;
+                return normalizeTextStyle(page.texts[activeTextSlot]);
+            }
+            return normalizeTextStyle(page.textStyle);
+        }
+
+        function setActiveTextStyle(partial) {
+            const page = currentPage();
+            if (!page) return;
+            const next = normalizeTextStyle({ ...getActiveTextStyle(), ...partial });
+            if (isCustomLayout(page) && page.texts?.length) {
+                if (activeTextSlot >= page.texts.length) activeTextSlot = 0;
+                Object.assign(page.texts[activeTextSlot], next);
+                syncLegacyTextFields(page);
+            } else {
+                page.textStyle = next;
+            }
+            renderTextStyleControls();
+            // Live preview update
+            applyTextStyleToPreviewDom();
+            saveToLocalStorage();
+        }
+
+        function applyTextStyleToPreviewDom() {
+            const page = currentPage();
+            if (!page) return;
+            if (isCustomLayout(page)) {
+                (page.texts || []).forEach((tb, i) => {
+                    const el = document.querySelector(`.custom-text-box[data-slot="${i}"] .page-text`);
+                    if (el) el.setAttribute('style', textStyleToInlineCss(tb));
+                });
+            } else {
+                document.querySelectorAll('#preview-body .kindle-body-text').forEach((el) => {
+                    el.setAttribute('style', textStyleToInlineCss(page.textStyle));
+                });
+            }
+            // Mirror in editor for feel
+            const editor = document.getElementById('page-text-editor');
+            if (editor) {
+                const s = getActiveTextStyle();
+                editor.style.fontFamily = TEXT_FONT_STACK[s.font];
+                editor.style.fontSize = (TEXT_SIZE_MAP[s.size]?.px || 15) + 'px';
+                editor.style.fontWeight = s.weight === 'bold' ? '700' : '400';
+                editor.style.fontStyle = s.style;
+                editor.style.textAlign = s.align;
+                editor.style.lineHeight = String(TEXT_LEADING_MAP[s.leading] || 1.65);
+            }
+        }
+
+        function renderTextStyleControls() {
+            const host = document.getElementById('text-style-controls');
+            if (!host) return;
+            const s = getActiveTextStyle();
+            host.innerHTML = `
+                <label>Font
+                    <select onchange="setActiveTextStyle({font:this.value})">
+                        <option value="serif" ${s.font === 'serif' ? 'selected' : ''}>Serif (print/Kindle body)</option>
+                        <option value="sans" ${s.font === 'sans' ? 'selected' : ''}>Sans (clean / modern)</option>
+                    </select>
+                </label>
+                <label>Size
+                    <select onchange="setActiveTextStyle({size:this.value})">
+                        <option value="sm" ${s.size === 'sm' ? 'selected' : ''}>Small (~11pt)</option>
+                        <option value="md" ${s.size === 'md' ? 'selected' : ''}>Body (~12pt)</option>
+                        <option value="lg" ${s.size === 'lg' ? 'selected' : ''}>Large (~14pt)</option>
+                        <option value="xl" ${s.size === 'xl' ? 'selected' : ''}>XL kids (~16–18pt)</option>
+                    </select>
+                </label>
+                <label>Align
+                    <select onchange="setActiveTextStyle({align:this.value})">
+                        <option value="left" ${s.align === 'left' ? 'selected' : ''}>Left</option>
+                        <option value="center" ${s.align === 'center' ? 'selected' : ''}>Center</option>
+                        <option value="justify" ${s.align === 'justify' ? 'selected' : ''}>Justify</option>
+                    </select>
+                </label>
+                <label>Leading
+                    <select onchange="setActiveTextStyle({leading:this.value})">
+                        <option value="tight" ${s.leading === 'tight' ? 'selected' : ''}>Tight</option>
+                        <option value="normal" ${s.leading === 'normal' ? 'selected' : ''}>Normal</option>
+                        <option value="loose" ${s.leading === 'loose' ? 'selected' : ''}>Loose</option>
+                    </select>
+                </label>
+                <div class="flex gap-1 items-end pb-0.5">
+                    <button type="button" class="style-chip-btn ${s.weight === 'bold' ? 'active' : ''}"
+                            onclick="setActiveTextStyle({weight:'${s.weight === 'bold' ? 'normal' : 'bold'}'})"
+                            title="Bold"><b>B</b></button>
+                    <button type="button" class="style-chip-btn ${s.style === 'italic' ? 'active' : ''}"
+                            onclick="setActiveTextStyle({style:'${s.style === 'italic' ? 'normal' : 'italic'}'})"
+                            title="Italic"><i>I</i></button>
+                </div>
+            `;
+            applyTextStyleToPreviewDom();
+        }
+
+        function defaultFrameForIndex(i, count) {
+            if (count <= 1) return { ...CUSTOM_DEFAULT_FRAMES[0] };
+            if (count === 2) {
+                return i === 0
+                    ? { x: 6, y: 6, w: 42, h: 40 }
+                    : { x: 52, y: 6, w: 42, h: 40 };
+            }
+            // 3
+            return [
+                { x: 4, y: 5, w: 30, h: 36 },
+                { x: 35, y: 5, w: 30, h: 36 },
+                { x: 66, y: 5, w: 30, h: 36 },
+            ][i] || { ...CUSTOM_DEFAULT_FRAMES[0] };
+        }
+
+        /** Rhyme-friendly text box defaults: short strips when multi-box */
+        function defaultTextFrameForIndex(i, count) {
+            if (count <= 1) return { x: 8, y: 54, w: 84, h: 38 };
+            if (count === 2) {
+                return i === 0
+                    ? { x: 6, y: 48, w: 88, h: 20 }
+                    : { x: 6, y: 72, w: 88, h: 22 };
+            }
+            // 3 short rhyme lines / stanzas
+            return [
+                { x: 6, y: 46, w: 88, h: 14 },
+                { x: 6, y: 62, w: 88, h: 14 },
+                { x: 6, y: 78, w: 88, h: 16 },
+            ][i] || { ...CUSTOM_TEXT_DEFAULT };
+        }
+
+        function emptyImageSlot(prompt = '', frame = null) {
+            const f = frame || { x: 10, y: 10, w: 40, h: 35 };
+            return {
+                src: '',
+                prompt: prompt || '',
+                x: clamp(Number(f.x) || 10, 0, 95),
+                y: clamp(Number(f.y) || 10, 0, 95),
+                w: clamp(Number(f.w) || 40, 12, 100),
+                h: clamp(Number(f.h) || 35, 12, 100),
+            };
+        }
+
+        function emptyTextSlot(content = '', frame = null, style = null) {
+            const f = frame || { ...CUSTOM_TEXT_DEFAULT };
+            const st = normalizeTextStyle(style);
+            return {
+                content: content || '',
+                x: clamp(Number(f.x) || 8, 0, 95),
+                y: clamp(Number(f.y) || 52, 0, 95),
+                w: clamp(Number(f.w) || 84, 12, 100),
+                h: clamp(Number(f.h) || 20, 8, 100),
+                font: st.font,
+                size: st.size,
+                align: st.align,
+                weight: st.weight,
+                style: st.style,
+                leading: st.leading,
+            };
+        }
+
+        function getPageTextCount(page) {
+            if (!page) return 0;
+            if (isCustomLayout(page)) {
+                return Math.min(3, Math.max(1, (page.texts || []).length || 1));
+            }
+            return 1;
+        }
+
+        function getPageTextCombined(page) {
+            if (!page) return '';
+            if (isCustomLayout(page) && Array.isArray(page.texts) && page.texts.length) {
+                return page.texts.map((t) => (t.content || '').trim()).filter(Boolean).join('\n\n');
+            }
+            return page.text || '';
+        }
+
+        function syncLegacyTextFields(page) {
+            if (!page) return;
+            if (isCustomLayout(page) && Array.isArray(page.texts) && page.texts.length) {
+                page.text = page.texts.map((t) => t.content || '').join('\n\n');
+                page.textFrame = {
+                    x: page.texts[0].x,
+                    y: page.texts[0].y,
+                    w: page.texts[0].w,
+                    h: page.texts[0].h,
+                };
+                page.textStyle = normalizeTextStyle(page.texts[0]);
+            }
+        }
+
+        function setActiveTextContent(content) {
+            const page = currentPage();
+            if (!page) return;
+            if (isCustomLayout(page) && page.texts?.length) {
+                if (activeTextSlot >= page.texts.length) activeTextSlot = 0;
+                if (!page.texts[activeTextSlot]) {
+                    page.texts[activeTextSlot] = emptyTextSlot('', defaultTextFrameForIndex(activeTextSlot, page.texts.length));
+                }
+                page.texts[activeTextSlot].content = content;
+                syncLegacyTextFields(page);
+            } else {
+                page.text = content;
+            }
+        }
+
+        function getActiveTextContent() {
+            const page = currentPage();
+            if (!page) return '';
+            if (isCustomLayout(page) && page.texts?.length) {
+                if (activeTextSlot >= page.texts.length) activeTextSlot = 0;
+                return page.texts[activeTextSlot]?.content || '';
+            }
+            return page.text || '';
+        }
+
+        function layoutMeta(layoutId) {
+            return PAGE_LAYOUTS[layoutId] || PAGE_LAYOUTS[DEFAULT_LAYOUT];
+        }
+
+        function isCustomLayout(pageOrId) {
+            const id = typeof pageOrId === 'string' ? pageOrId : pageOrId?.layout;
+            return id === 'custom';
+        }
+
+        function getPageSlotCount(page) {
+            if (!page) return 0;
+            if (page.layout === 'text-only') return 0;
+            if (isCustomLayout(page)) {
+                return Math.min(3, Math.max(1, (page.images || []).length || 1));
+            }
+            return layoutMeta(page.layout).slots;
+        }
+
+        function normalizeFrame(obj, fallback) {
+            const f = fallback || CUSTOM_TEXT_DEFAULT;
+            return {
+                x: clamp(Number(obj?.x ?? f.x), 0, 95),
+                y: clamp(Number(obj?.y ?? f.y), 0, 95),
+                w: clamp(Number(obj?.w ?? f.w), 12, 100),
+                h: clamp(Number(obj?.h ?? f.h), 12, 100),
+            };
+        }
+
+        function normalizePage(page, index = 0) {
+            const p = page && typeof page === 'object' ? page : {};
+            const layout = PAGE_LAYOUTS[p.layout] ? p.layout : DEFAULT_LAYOUT;
+            const meta = layoutMeta(layout);
+            const freeform = !!meta.freeform;
+
+            let images = Array.isArray(p.images)
+                ? p.images.map((img, i) => {
+                    const frame = freeform
+                        ? normalizeFrame(img, defaultFrameForIndex(i, Math.min(3, p.images.length || 1)))
+                        : null;
+                    return {
+                        src: (img && img.src) || '',
+                        prompt: (img && img.prompt) || '',
+                        ...(freeform ? frame : {}),
+                    };
+                })
+                : [];
+
+            // Migrate legacy single image fields
+            if (p.image && (!images[0] || !images[0].src)) {
+                if (!images[0]) images[0] = emptyImageSlot('', freeform ? defaultFrameForIndex(0, 1) : null);
+                images[0].src = p.image;
+                if (!images[0].prompt && p.imagePrompt) images[0].prompt = p.imagePrompt;
+            } else if (p.imagePrompt && images[0] && !images[0].prompt) {
+                images[0].prompt = p.imagePrompt;
+            }
+
+            if (layout === 'text-only') {
+                images = [];
+            } else if (freeform) {
+                let n = images.length;
+                if (n < 1) n = 1;
+                if (n > 3) n = 3;
+                while (images.length < n) {
+                    const i = images.length;
+                    images.push(emptyImageSlot('', defaultFrameForIndex(i, n)));
+                }
+                images = images.slice(0, n).map((im, i) => ({
+                    src: im.src || '',
+                    prompt: im.prompt || '',
+                    ...normalizeFrame(im, defaultFrameForIndex(i, n)),
+                }));
+            } else {
+                const slots = meta.slots;
+                const need = Math.max(slots, 1);
+                while (images.length < need) images.push(emptyImageSlot());
+                images = images.slice(0, slots).map((im) => ({
+                    src: im.src || '',
+                    prompt: im.prompt || '',
+                }));
+            }
+
+            const out = {
+                id: p.id || (Date.now() + index),
+                title: p.title || `Page ${index + 1}`,
+                text: p.text || '',
+                textPrompt: p.textPrompt || '',
+                layout,
+                images,
+                image: images[0]?.src || '',
+                imagePrompt: images[0]?.prompt || '',
+            };
+
+            if (freeform) {
+                let texts = Array.isArray(p.texts)
+                    ? p.texts.map((t, i) => {
+                        const n = Math.min(3, Math.max(1, p.texts.length || 1));
+                        return emptyTextSlot(
+                            t?.content || '',
+                            normalizeFrame(t, defaultTextFrameForIndex(i, n)),
+                            t
+                        );
+                    })
+                    : [];
+                // Migrate legacy single text + textFrame + textStyle
+                if (!texts.length) {
+                    texts = [emptyTextSlot(
+                        p.text || '',
+                        normalizeFrame(p.textFrame, CUSTOM_TEXT_DEFAULT),
+                        p.textStyle || p
+                    )];
+                }
+                let tn = texts.length;
+                if (tn < 1) tn = 1;
+                if (tn > 3) tn = 3;
+                while (texts.length < tn) {
+                    const i = texts.length;
+                    texts.push(emptyTextSlot('', defaultTextFrameForIndex(i, tn)));
+                }
+                texts = texts.slice(0, tn).map((t, i) =>
+                    emptyTextSlot(
+                        t.content || '',
+                        normalizeFrame(t, defaultTextFrameForIndex(i, tn)),
+                        t
+                    )
+                );
+                out.texts = texts;
+                out.text = texts.map((t) => t.content || '').join('\n\n');
+                out.textFrame = {
+                    x: texts[0].x, y: texts[0].y, w: texts[0].w, h: texts[0].h,
+                };
+                out.textStyle = normalizeTextStyle(texts[0]);
+            } else {
+                out.textStyle = normalizeTextStyle(p.textStyle);
+            }
+
+            return out;
+        }
+
+        function normalizeBookPages() {
+            if (!book.pages) book.pages = [];
+            book.pages = book.pages.map((p, i) => normalizePage(p, i));
+        }
+
+        function currentPage() {
+            return book.pages[currentPageIndex];
+        }
+
+        function syncLegacyImageFields(page) {
+            if (!page) return;
+            page.image = page.images?.[0]?.src || '';
+            page.imagePrompt = page.images?.[0]?.prompt || '';
+        }
+
+        function setPageLayout(layoutId) {
+            const page = currentPage();
+            if (!page || !PAGE_LAYOUTS[layoutId]) return;
+            const prev = page.images || [];
+            page.layout = layoutId;
+            const meta = layoutMeta(layoutId);
+
+            if (meta.slots === 0 && !meta.freeform) {
+                page.images = [];
+                delete page.textFrame;
+                delete page.texts;
+            } else if (meta.freeform) {
+                const n = Math.min(3, Math.max(1, prev.length || 1));
+                const next = [];
+                for (let i = 0; i < n; i++) {
+                    const src = prev[i]?.src || '';
+                    const prompt = prev[i]?.prompt || '';
+                    const frame = (prev[i] && prev[i].w)
+                        ? normalizeFrame(prev[i], defaultFrameForIndex(i, n))
+                        : defaultFrameForIndex(i, n);
+                    next.push({ src, prompt, ...frame });
+                }
+                page.images = next;
+                // Seed text boxes from existing text / texts
+                if (Array.isArray(page.texts) && page.texts.length) {
+                    page.texts = page.texts.slice(0, 3).map((t, i, arr) =>
+                        emptyTextSlot(t.content || '', normalizeFrame(t, defaultTextFrameForIndex(i, arr.length)))
+                    );
+                } else {
+                    page.texts = [emptyTextSlot(page.text || '', normalizeFrame(page.textFrame, CUSTOM_TEXT_DEFAULT))];
+                }
+                syncLegacyTextFields(page);
+                activeTextSlot = 0;
+            } else {
+                const slots = meta.slots;
+                const next = [];
+                for (let i = 0; i < slots; i++) {
+                    next.push({
+                        src: prev[i]?.src || '',
+                        prompt: prev[i]?.prompt || '',
+                    });
+                }
+                page.images = next;
+                // Flatten multi text boxes when leaving custom; keep style from active/first box
+                if (Array.isArray(page.texts) && page.texts.length) {
+                    page.text = page.texts.map((t) => t.content || '').filter(Boolean).join('\n\n');
+                    page.textStyle = normalizeTextStyle(page.texts[activeTextSlot] || page.texts[0]);
+                } else if (!page.textStyle) {
+                    page.textStyle = { ...TEXT_STYLE_DEFAULTS };
+                }
+                delete page.textFrame;
+                delete page.texts;
+                activeTextSlot = 0;
+            }
+            syncLegacyImageFields(page);
+            const slots = getPageSlotCount(page);
+            if (activeImageSlot >= slots) activeImageSlot = 0;
+            renderLayoutPicker();
+            renderSlotPicker();
+            renderTextSlotPicker();
+            renderPreview();
+            renderControls();
+            renderPageList();
+            saveToLocalStorage();
+        }
+
+        function addCustomImageBox() {
+            const page = currentPage();
+            if (!page || !isCustomLayout(page)) return;
+            if ((page.images || []).length >= 3) {
+                showToast('Max 3 image boxes per custom page.');
+                return;
+            }
+            const n = page.images.length + 1;
+            page.images.push(emptyImageSlot('', defaultFrameForIndex(n - 1, n)));
+            // reflow default positions if boxes still look stacked on defaults? keep existing frames
+            activeImageSlot = page.images.length - 1;
+            syncLegacyImageFields(page);
+            renderSlotPicker();
+            renderPreview();
+            renderControls();
+            saveToLocalStorage();
+            showToast(`Image box ${page.images.length} added — drag it in the preview.`, 'success');
+        }
+
+        function removeCustomImageBox() {
+            const page = currentPage();
+            if (!page || !isCustomLayout(page)) return;
+            if ((page.images || []).length <= 1) {
+                showToast('Custom pages need at least one image box (or switch layout).');
+                return;
+            }
+            page.images.splice(activeImageSlot, 1);
+            if (activeImageSlot >= page.images.length) activeImageSlot = page.images.length - 1;
+            syncLegacyImageFields(page);
+            renderSlotPicker();
+            renderPreview();
+            renderControls();
+            saveToLocalStorage();
+        }
+
+        function addCustomTextBox() {
+            const page = currentPage();
+            if (!page || !isCustomLayout(page)) return;
+            if (!page.texts) page.texts = [emptyTextSlot(page.text || '', CUSTOM_TEXT_DEFAULT)];
+            if (page.texts.length >= 3) {
+                showToast('Max 3 text boxes per custom page — perfect for short rhyme stanzas.');
+                return;
+            }
+            const n = page.texts.length + 1;
+            page.texts.push(emptyTextSlot('', defaultTextFrameForIndex(n - 1, n)));
+            activeTextSlot = page.texts.length - 1;
+            syncLegacyTextFields(page);
+            renderTextSlotPicker();
+            renderPreview();
+            renderControls();
+            saveToLocalStorage();
+            showToast(`Text box ${page.texts.length} added — great for a rhyme line. Drag it in the preview.`, 'success');
+        }
+
+        function removeCustomTextBox() {
+            const page = currentPage();
+            if (!page || !isCustomLayout(page)) return;
+            if (!page.texts || page.texts.length <= 1) {
+                showToast('Keep at least one text box (or clear its text).');
+                return;
+            }
+            page.texts.splice(activeTextSlot, 1);
+            if (activeTextSlot >= page.texts.length) activeTextSlot = page.texts.length - 1;
+            syncLegacyTextFields(page);
+            renderTextSlotPicker();
+            renderPreview();
+            renderControls();
+            saveToLocalStorage();
+        }
+
+        function setActiveTextSlot(slot) {
+            const page = currentPage();
+            if (!page || !isCustomLayout(page)) return;
+            const n = getPageTextCount(page);
+            if (slot < 0 || slot >= n) return;
+            activeTextSlot = slot;
+            renderTextSlotPicker();
+            renderTextStyleControls();
+            const editor = document.getElementById('page-text-editor');
+            if (editor) editor.value = page.texts[slot]?.content || '';
+            document.querySelectorAll('.custom-text-box').forEach((el) => {
+                el.classList.toggle('selected', Number(el.dataset.slot) === slot);
+            });
+            document.querySelectorAll('.custom-box').forEach((el) => el.classList.remove('selected'));
+        }
+
+        function renderTextSlotPicker() {
+            const row = document.getElementById('text-slot-row');
+            const picker = document.getElementById('text-slot-picker');
+            const page = currentPage();
+            if (!row || !picker) return;
+            if (!page || !isCustomLayout(page)) {
+                row.classList.add('hidden');
+                return;
+            }
+            const n = getPageTextCount(page);
+            if (n <= 1) {
+                // Still show one chip so it's clear on custom pages when adding more
+                row.classList.remove('hidden');
+            } else {
+                row.classList.remove('hidden');
+            }
+            if (activeTextSlot >= n) activeTextSlot = 0;
+            picker.innerHTML = Array.from({ length: n }, (_, i) => {
+                const filled = (page.texts?.[i]?.content || '').trim() ? '●' : '○';
+                return `<button type="button" class="slot-chip ${i === activeTextSlot ? 'active' : ''}" onclick="setActiveTextSlot(${i})">${filled} Text ${i + 1}</button>`;
+            }).join('');
+        }
+
+        function setActiveImageSlot(slot, opts = {}) {
+            const page = currentPage();
+            if (!page) return;
+            const slots = getPageSlotCount(page);
+            if (slot < 0 || slot >= slots) return;
+            activeImageSlot = slot;
+            if (!opts.skipRender) {
+                renderSlotPicker();
+                // Update prompt field without full controls re-render when dragging
+                const promptEl = document.getElementById('image-prompt');
+                if (promptEl && page.images?.[slot]) {
+                    promptEl.value = page.images[slot].prompt || '';
+                }
+                const img = document.getElementById('current-illustration');
+                const placeholder = document.getElementById('illustration-placeholder');
+                const filename = document.getElementById('illustration-filename');
+                const src = page.images?.[slot]?.src || '';
+                if (img && placeholder) {
+                    if (src) {
+                        img.src = src;
+                        img.style.display = 'block';
+                        placeholder.style.display = 'none';
+                    } else {
+                        img.style.display = 'none';
+                        placeholder.style.display = 'block';
+                    }
+                }
+                if (filename) {
+                    filename.textContent = slots > 1
+                        ? `Slot ${slot + 1}${src ? (src.startsWith('data:') ? ': (embedded)' : '') : ' empty'}`
+                        : (src.startsWith('data:') ? '(embedded)' : '');
+                }
+            }
+            document.querySelectorAll('.custom-box').forEach((el) => {
+                el.classList.toggle('selected', Number(el.dataset.slot) === slot);
+            });
+            document.querySelectorAll('.custom-text-box').forEach((el) => el.classList.remove('selected'));
+        }
+
+        function updateActiveImagePrompt() {
+            const page = currentPage();
+            if (!page) return;
+            const slots = getPageSlotCount(page);
+            if (slots === 0) return;
+            if (!page.images[activeImageSlot]) {
+                page.images[activeImageSlot] = emptyImageSlot('', isCustomLayout(page) ? defaultFrameForIndex(activeImageSlot, slots) : null);
+            }
+            page.images[activeImageSlot].prompt = document.getElementById('image-prompt').value;
+            if (activeImageSlot === 0) page.imagePrompt = page.images[0].prompt;
+            saveToLocalStorage();
+        }
+
+        function setImageAtSlot(slot, src, prompt) {
+            const page = currentPage();
+            if (!page) return;
+            const slots = getPageSlotCount(page);
+            if (slots === 0) {
+                showToast('This layout is text-only. Switch layout to add images.');
+                return;
+            }
+            if (slot < 0 || slot >= slots) slot = 0;
+            if (!page.images[slot]) {
+                page.images[slot] = emptyImageSlot('', isCustomLayout(page) ? defaultFrameForIndex(slot, slots) : null);
+            }
+            page.images[slot].src = src || '';
+            if (prompt != null && prompt !== '') page.images[slot].prompt = prompt;
+            syncLegacyImageFields(page);
+            renderPreview();
+            renderControls();
+            renderPageList();
+            saveToLocalStorage();
+        }
+
+        function previewTextHtml(textOrPage) {
+            const raw = typeof textOrPage === 'string'
+                ? textOrPage
+                : (textOrPage?.text || '');
+            return (raw || '<span class="text-[#8a7566] italic">No text yet. Use the editor on the right.</span>')
+                .replace(/\n/g, '<br><br>');
+        }
+
+        function previewTextBoxHtml(content, emptyLabel) {
+            const raw = (content || '').trim();
+            if (!raw) {
+                return `<span class="text-[#8a7566] italic text-[11px]">${emptyLabel || 'Empty text box — type a rhyme here'}</span>`;
+            }
+            // Rhymes often use single newlines
+            return raw.replace(/\n/g, '<br>');
+        }
+
+        function previewImageHtml(src, maxH, emptyLabel) {
+            if (src) {
+                return `<img class="preview-img demo-image" style="max-height:${maxH}px" src="${src.replace(/"/g, '&quot;')}" onclick="enlargeImage(this.src)" alt="">`;
+            }
+            return `<div class="preview-img-empty" style="min-height:${Math.min(maxH, 120)}px">${emptyLabel || 'Image slot empty'}</div>`;
+        }
+
+        function renderLayoutPicker() {
+            const el = document.getElementById('layout-picker');
+            const desc = document.getElementById('layout-desc');
+            const tools = document.getElementById('custom-layout-tools');
+            if (!el) return;
+            const page = currentPage();
+            const current = page?.layout || DEFAULT_LAYOUT;
+            el.innerHTML = Object.values(PAGE_LAYOUTS).map((L) =>
+                `<button type="button" class="layout-chip ${L.id === current ? 'active' : ''}" onclick="setPageLayout('${L.id}')">${L.label}</button>`
+            ).join('');
+            if (desc) desc.textContent = layoutMeta(current).desc;
+            if (tools) {
+                if (isCustomLayout(current)) tools.classList.remove('hidden');
+                else tools.classList.add('hidden');
+            }
+        }
+
+        function renderSlotPicker() {
+            const row = document.getElementById('image-slot-row');
+            const picker = document.getElementById('image-slot-picker');
+            const page = currentPage();
+            if (!row || !picker || !page) return;
+            const slots = getPageSlotCount(page);
+            if (slots <= 1 && !isCustomLayout(page)) {
+                row.classList.add('hidden');
+                activeImageSlot = 0;
+                return;
+            }
+            if (slots === 0) {
+                row.classList.add('hidden');
+                return;
+            }
+            // Show slot chips for multi-image fixed layouts OR custom (even with 1 box, for clarity when adding)
+            if (slots <= 1 && !isCustomLayout(page)) {
+                row.classList.add('hidden');
+                activeImageSlot = 0;
+                return;
+            }
+            row.classList.remove('hidden');
+            if (activeImageSlot >= slots) activeImageSlot = 0;
+            picker.innerHTML = Array.from({ length: slots }, (_, i) => {
+                const filled = page.images?.[i]?.src ? '●' : '○';
+                return `<button type="button" class="slot-chip ${i === activeImageSlot ? 'active' : ''}" onclick="setActiveImageSlot(${i})">${filled} Image ${i + 1}</button>`;
+            }).join('');
+        }
+
+        function frameStyle(f) {
+            return `left:${f.x}%;top:${f.y}%;width:${f.w}%;height:${f.h}%;`;
+        }
+
+        function renderCustomPreview(page) {
+            const imgCount = (page.images || []).length;
+            const boxes = (page.images || []).map((im, i) => {
+                const f = normalizeFrame(im, defaultFrameForIndex(i, imgCount));
+                const selected = i === activeImageSlot ? 'selected' : '';
+                const inner = im.src
+                    ? `<img src="${String(im.src).replace(/"/g, '&quot;')}" alt="">`
+                    : `<div class="custom-box-empty">Image ${i + 1}<br><span style="font-size:10px">Generate or upload</span></div>`;
+                return `<div class="custom-box ${selected}" data-slot="${i}" data-kind="image" style="${frameStyle(f)}"
+                            onmousedown="startCustomDrag(event,'image',${i})" ontouchstart="startCustomDrag(event,'image',${i})">
+                    <div class="custom-box-badge">Img ${i + 1}</div>
+                    ${inner}
+                    <div class="custom-resize" onmousedown="startCustomDrag(event,'resize',${i})" ontouchstart="startCustomDrag(event,'resize',${i})"></div>
+                </div>`;
+            }).join('');
+
+            const texts = page.texts || [emptyTextSlot(page.text || '', page.textFrame, page.textStyle)];
+            const textBoxes = texts.map((tb, i) => {
+                const f = normalizeFrame(tb, defaultTextFrameForIndex(i, texts.length));
+                const selected = i === activeTextSlot ? 'selected' : '';
+                const inner = previewTextBoxHtml(tb.content, `Text ${i + 1} — short rhyme / caption`);
+                const tcss = textStyleToInlineCss(tb);
+                return `<div class="custom-text-box ${selected}" data-slot="${i}" data-kind="text" style="${frameStyle(f)}"
+                            onmousedown="startCustomDrag(event,'text',${i})" ontouchstart="startCustomDrag(event,'text',${i})">
+                    <div class="custom-box-badge">Txt ${i + 1}</div>
+                    <div class="page-text kindle-text kindle-body-text" style="${tcss}">${inner}</div>
+                    <div class="custom-resize" onmousedown="startCustomDrag(event,'text-resize',${i})" ontouchstart="startCustomDrag(event,'text-resize',${i})"></div>
+                </div>`;
+            }).join('');
+
+            return `<div class="custom-canvas" id="custom-canvas">
+                ${boxes}
+                ${textBoxes}
+            </div>
+            <div class="custom-hint">Drag to move · corner to resize · click box to select (Generate fills active image/text slot)</div>`;
+        }
+
+        function clientPoint(e) {
+            if (e.touches && e.touches[0]) {
+                return { x: e.touches[0].clientX, y: e.touches[0].clientY };
+            }
+            return { x: e.clientX, y: e.clientY };
+        }
+
+        function startCustomDrag(e, kind, slot) {
+            e.preventDefault();
+            e.stopPropagation();
+            const page = currentPage();
+            if (!page || !isCustomLayout(page)) return;
+
+            const canvas = document.getElementById('custom-canvas');
+            if (!canvas) return;
+            const rect = canvas.getBoundingClientRect();
+            const pt = clientPoint(e);
+
+            if (kind === 'image' || kind === 'resize') {
+                setActiveImageSlot(slot, { skipRender: false });
+            }
+            if (kind === 'text' || kind === 'text-resize') {
+                setActiveTextSlot(slot);
+            }
+
+            let frame;
+            if (kind === 'text' || kind === 'text-resize') {
+                const tb = page.texts?.[slot] || emptyTextSlot(page.text || '', page.textFrame);
+                frame = { ...normalizeFrame(tb, defaultTextFrameForIndex(slot, getPageTextCount(page))) };
+            } else {
+                frame = { ...normalizeFrame(page.images[slot], defaultFrameForIndex(slot, page.images.length)) };
+            }
+
+            customDrag = {
+                kind,
+                slot,
+                startX: pt.x,
+                startY: pt.y,
+                rectW: rect.width,
+                rectH: rect.height,
+                orig: frame,
+            };
+
+            document.addEventListener('mousemove', onCustomDragMove);
+            document.addEventListener('mouseup', endCustomDrag);
+            document.addEventListener('touchmove', onCustomDragMove, { passive: false });
+            document.addEventListener('touchend', endCustomDrag);
+        }
+
+        function onCustomDragMove(e) {
+            if (!customDrag) return;
+            e.preventDefault();
+            const page = currentPage();
+            if (!page) return;
+            const pt = clientPoint(e);
+            const dx = ((pt.x - customDrag.startX) / customDrag.rectW) * 100;
+            const dy = ((pt.y - customDrag.startY) / customDrag.rectH) * 100;
+            const o = customDrag.orig;
+            let next;
+
+            if (customDrag.kind === 'resize' || customDrag.kind === 'text-resize') {
+                next = {
+                    x: o.x,
+                    y: o.y,
+                    w: clamp(o.w + dx, 12, 100 - o.x),
+                    h: clamp(o.h + dy, 12, 100 - o.y),
+                };
+            } else {
+                next = {
+                    x: clamp(o.x + dx, 0, 100 - o.w),
+                    y: clamp(o.y + dy, 0, 100 - o.h),
+                    w: o.w,
+                    h: o.h,
+                };
+            }
+
+            // live update DOM without full re-render
+            let el;
+            if (customDrag.kind === 'text' || customDrag.kind === 'text-resize') {
+                if (!page.texts) page.texts = [emptyTextSlot(page.text || '', CUSTOM_TEXT_DEFAULT)];
+                if (!page.texts[customDrag.slot]) {
+                    page.texts[customDrag.slot] = emptyTextSlot('', defaultTextFrameForIndex(customDrag.slot, page.texts.length));
+                }
+                Object.assign(page.texts[customDrag.slot], next);
+                syncLegacyTextFields(page);
+                el = document.querySelector(`.custom-text-box[data-slot="${customDrag.slot}"]`);
+            } else {
+                Object.assign(page.images[customDrag.slot], next);
+                el = document.querySelector(`.custom-box[data-slot="${customDrag.slot}"]`);
+            }
+            if (el) {
+                el.style.left = next.x + '%';
+                el.style.top = next.y + '%';
+                el.style.width = next.w + '%';
+                el.style.height = next.h + '%';
+            }
+        }
+
+        function endCustomDrag() {
+            if (!customDrag) return;
+            customDrag = null;
+            document.removeEventListener('mousemove', onCustomDragMove);
+            document.removeEventListener('mouseup', endCustomDrag);
+            document.removeEventListener('touchmove', onCustomDragMove);
+            document.removeEventListener('touchend', endCustomDrag);
+            const page = currentPage();
+            syncLegacyImageFields(page);
+            syncLegacyTextFields(page);
+            saveToLocalStorage();
+        }
+        
+        const PROJECT_FORMAT = 'kindleforge-project';
+        const PROJECT_VERSION = 1;
+
+        function syncBookFromUi() {
+            const titleInput = document.getElementById('book-title');
+            const authorInput = document.getElementById('book-author');
+            const styleNotesEl = document.getElementById('book-style-notes');
+            if (titleInput) book.title = titleInput.value;
+            if (authorInput) book.author = authorInput.value;
+            if (styleNotesEl) book.bookStyleNotes = styleNotesEl.value.trim();
+            // Keep live text editor edits on current page / active text box
+            const editor = document.getElementById('page-text-editor');
+            if (editor && book.pages[currentPageIndex]) {
+                setActiveTextContent(editor.value);
+            }
+            const textPromptEl = document.getElementById('text-prompt');
+            if (textPromptEl && book.pages[currentPageIndex]) {
+                book.pages[currentPageIndex].textPrompt = textPromptEl.value;
+            }
+            const imagePromptEl = document.getElementById('image-prompt');
+            if (imagePromptEl && book.pages[currentPageIndex]) {
+                book.pages[currentPageIndex].imagePrompt = imagePromptEl.value;
+            }
+        }
+
+        function saveToLocalStorage() {
+            syncBookFromUi();
+            localStorage.setItem('kindleforge-book', JSON.stringify(book));
+            localStorage.setItem('kindleforge-current-page', currentPageIndex);
+        }
+        
+        function loadFromLocalStorage() {
+            const saved = localStorage.getItem('kindleforge-book');
+            if (saved) {
+                book = JSON.parse(saved);
+                normalizeBookPages();
+                const savedIndex = localStorage.getItem('kindleforge-current-page');
+                currentPageIndex = savedIndex ? parseInt(savedIndex) : 0;
+                activeImageSlot = 0;
+                return true;
+            }
+            return false;
+        }
+
+        function slugifyFilename(name) {
+            return (name || 'untitled-book')
+                .toLowerCase()
+                .replace(/[^a-z0-9]+/g, '-')
+                .replace(/^-+|-+$/g, '')
+                .slice(0, 60) || 'untitled-book';
+        }
+
+        async function imageToDataUrl(src) {
+            if (!src) return '';
+            if (src.startsWith('data:')) return src;
+            if (window.location.protocol === 'file:') {
+                // Cannot fetch relative files on file://
+                return src;
+            }
+            try {
+                const response = await fetch(src);
+                if (!response.ok) throw new Error('fetch failed');
+                const blob = await response.blob();
+                return await new Promise((resolve, reject) => {
+                    const r = new FileReader();
+                    r.onload = () => resolve(r.result);
+                    r.onerror = reject;
+                    r.readAsDataURL(blob);
+                });
+            } catch (e) {
+                console.warn('Could not embed image for project save:', src, e);
+                return src;
+            }
+        }
+
+        async function buildPortableProject(embedImages = true) {
+            syncBookFromUi();
+            const pages = [];
+            let embedded = 0;
+            let skipped = 0;
+
+            for (const page of book.pages) {
+                const norm = normalizePage(page);
+                const images = [];
+                for (const im of (norm.images || [])) {
+                    let src = im.src || '';
+                    if (embedImages && src && !src.startsWith('data:')) {
+                        const dataUrl = await imageToDataUrl(src);
+                        if (dataUrl && dataUrl.startsWith('data:')) {
+                            src = dataUrl;
+                            embedded++;
+                        } else {
+                            skipped++;
+                        }
+                    }
+                    const entry = { src, prompt: im.prompt || '' };
+                    if (norm.layout === 'custom' || im.w != null) {
+                        entry.x = im.x; entry.y = im.y; entry.w = im.w; entry.h = im.h;
+                    }
+                    images.push(entry);
+                }
+                const pageOut = {
+                    id: norm.id,
+                    title: norm.title || '',
+                    text: norm.text || '',
+                    textPrompt: norm.textPrompt || '',
+                    layout: norm.layout,
+                    images,
+                    image: images[0]?.src || '',
+                    imagePrompt: images[0]?.prompt || ''
+                };
+                if (norm.textStyle) pageOut.textStyle = normalizeTextStyle(norm.textStyle);
+                if (norm.layout === 'custom') {
+                    if (norm.textFrame) pageOut.textFrame = { ...norm.textFrame };
+                    if (Array.isArray(norm.texts)) {
+                        pageOut.texts = norm.texts.map((t) => ({
+                            content: t.content || '',
+                            x: t.x, y: t.y, w: t.w, h: t.h,
+                            ...normalizeTextStyle(t),
+                        }));
+                    }
+                }
+                pages.push(pageOut);
+            }
+
+            return {
+                format: PROJECT_FORMAT,
+                version: PROJECT_VERSION,
+                savedAt: new Date().toISOString(),
+                currentPageIndex: currentPageIndex,
+                book: {
+                    title: book.title || 'Untitled Book',
+                    author: book.author || '',
+                    bookStyleNotes: book.bookStyleNotes || '',
+                    pages
+                },
+                _meta: { embeddedImages: embedded, unembeddedImages: skipped }
+            };
+        }
+
+        async function saveProjectFile() {
+            try {
+                showToast('Building portable project…', 'info');
+                const project = await buildPortableProject(true);
+                const meta = project._meta;
+                delete project._meta;
+
+                const json = JSON.stringify(project, null, 2);
+                const blob = new Blob([json], { type: 'application/json' });
+                const url = URL.createObjectURL(blob);
+                const stamp = new Date().toISOString().slice(0, 10);
+                const filename = `${slugifyFilename(project.book.title)}-${stamp}.kindleforge.json`;
+                const a = document.createElement('a');
+                a.href = url;
+                a.download = filename;
+                document.body.appendChild(a);
+                a.click();
+                a.remove();
+                URL.revokeObjectURL(url);
+
+                // Also refresh localStorage with current state
+                saveToLocalStorage();
+
+                let msg = `Project saved: ${filename}`;
+                if (meta.embeddedImages > 0) msg += ` (${meta.embeddedImages} image(s) embedded)`;
+                if (meta.unembeddedImages > 0) {
+                    msg += `. ${meta.unembeddedImages} image path(s) left as-is — use Make Portable / Upload first if moving PCs.`;
+                    showToast(msg, 'info');
+                } else {
+                    showToast(msg, 'success');
+                }
+            } catch (e) {
+                console.error(e);
+                showToast('Save project failed. See console.', 'info');
+            }
+        }
+
+        function triggerLoadProject() {
+            const input = document.getElementById('project-file-input');
+            if (input) {
+                input.value = '';
+                input.click();
+            }
+        }
+
+        function normalizeLoadedBook(rawBook) {
+            if (!rawBook || typeof rawBook !== 'object') {
+                throw new Error('Invalid project: missing book data');
+            }
+            const pages = Array.isArray(rawBook.pages) ? rawBook.pages : [];
+            if (pages.length === 0) {
+                throw new Error('Invalid project: book has no pages');
+            }
+            return {
+                title: rawBook.title || 'Untitled Book',
+                author: rawBook.author || '',
+                bookStyleNotes: rawBook.bookStyleNotes || '',
+                pages: pages.map((p, i) => normalizePage({
+                    id: p.id || (Date.now() + i),
+                    title: p.title || `Page ${i + 1}`,
+                    text: p.text || '',
+                    textPrompt: p.textPrompt || '',
+                    layout: p.layout,
+                    images: p.images,
+                    texts: p.texts,
+                    textFrame: p.textFrame,
+                    textStyle: p.textStyle,
+                    image: p.image || '',
+                    imagePrompt: p.imagePrompt || ''
+                }, i))
+            };
+        }
+
+        function applyLoadedBook(loadedBook, pageIndex) {
+            book = loadedBook;
+            currentPageIndex = Math.max(0, Math.min(pageIndex || 0, book.pages.length - 1));
+
+            document.getElementById('book-title').value = book.title;
+            document.getElementById('book-author').value = book.author;
+
+            renderPageList();
+            renderPreview();
+            renderControls();
+            saveToLocalStorage();
+        }
+
+        function loadProjectFromFile(input) {
+            const file = input.files && input.files[0];
+            if (!file) return;
+
+            const reader = new FileReader();
+            reader.onload = () => {
+                try {
+                    const data = JSON.parse(reader.result);
+                    let loadedBook;
+                    let pageIndex = 0;
+
+                    // Full KindleForge project file
+                    if (data && data.format === PROJECT_FORMAT && data.book) {
+                        loadedBook = normalizeLoadedBook(data.book);
+                        pageIndex = typeof data.currentPageIndex === 'number' ? data.currentPageIndex : 0;
+                    }
+                    // Raw book object (or older localStorage dump)
+                    else if (data && Array.isArray(data.pages)) {
+                        loadedBook = normalizeLoadedBook(data);
+                    }
+                    // Nested { book: { pages: [...] } } without format tag
+                    else if (data && data.book && Array.isArray(data.book.pages)) {
+                        loadedBook = normalizeLoadedBook(data.book);
+                        pageIndex = typeof data.currentPageIndex === 'number' ? data.currentPageIndex : 0;
+                    } else {
+                        throw new Error('Not a KindleForge project (expected format kindleforge-project or a book with pages[])');
+                    }
+
+                    const label = loadedBook.title || file.name;
+                    if (!confirm(`Load project "${label}"?\n\nThis replaces your current book in the editor (your last auto-save will be overwritten).`)) {
+                        return;
+                    }
+
+                    applyLoadedBook(loadedBook, pageIndex);
+                    showToast(`Loaded: ${label} (${loadedBook.pages.length} pages)`, 'success');
+                } catch (e) {
+                    console.error(e);
+                    showToast(`Load failed: ${e.message || e}`, 'info');
+                    alert('Could not load project:\n' + (e.message || e));
+                }
+            };
+            reader.onerror = () => showToast('Could not read file', 'info');
+            reader.readAsText(file);
+        }
+        
+        function createDefaultDemoPages() {
+            book.pages = [
+                normalizePage({
+                    id: Date.now() + 1,
+                    title: "Cover",
+                    layout: "image-only",
+                    text: "",
+                    image: "generated/cover.jpg",
+                    imagePrompt: "Stunning children's book cover of a red fox with a lantern containing a glowing star",
+                    textPrompt: ""
+                }, 0),
+                normalizePage({
+                    id: Date.now() + 2,
+                    title: "The Discovery",
+                    layout: "image-top",
+                    text: "In the quiet hours between dusk and true night, when the forest holds its breath, a small red fox named Lira followed a thread of golden light through the ferns.\n\nShe had never seen anything like it before — a star, no bigger than a hazelnut, resting on a bed of moss and glowing with a steady, patient warmth.",
+                    image: "generated/1.jpg",
+                    imagePrompt: "A small red fox discovering a glowing golden star in a misty twilight forest, whimsical storybook style",
+                    textPrompt: "Write a gentle, slightly magical opening page (160-190 words) for a children's story about a fox finding a fallen star in an ancient forest."
+                }, 1),
+                normalizePage({
+                    id: Date.now() + 3,
+                    title: "The Lantern",
+                    layout: "two-side",
+                    text: "Lira carried the star carefully between her teeth at first, then in her paws when it grew warm. She knew of an old lantern her grandfather had left in the hollow of the oldest oak.\n\nWith great care, she placed the star inside. Instantly the lantern lit the clearing with a light that felt like summer even in the middle of winter.",
+                    images: [
+                        { src: "generated/2.jpg", prompt: "Little red fox placing a glowing star into a small handmade lantern in a moonlit forest" },
+                        { src: "", prompt: "Close-up of the old lantern glowing with starlight, cozy storybook style" }
+                    ],
+                    textPrompt: "Write the second page where the fox finds a lantern and places the star inside. Keep the tone warm, curious, and slightly wondrous. ~170 words."
+                }, 2),
+                normalizePage({
+                    id: Date.now() + 4,
+                    title: "What the Light Revealed",
+                    layout: "split",
+                    text: "The animals of the forest began to gather. First the owls, then the rabbits, and finally the old badger who had not left his sett in years.\n\nThey did not speak. They simply sat in the circle of light and remembered what it felt like to be young, to believe that small things could still change everything.",
+                    image: "",
+                    imagePrompt: "Forest animals gathered peacefully around a glowing lantern in the dark woods, gentle storybook illustration",
+                    textPrompt: "Write a page about the forest animals quietly gathering around the light. Focus on the feeling of community and quiet wonder rather than action. ~160 words."
+                }, 3)
+            ];
+        }
+        
+        function renderPageList() {
+            const container = document.getElementById('page-list');
+            container.innerHTML = '';
+            
+            if (book.pages.length === 0) {
+                container.innerHTML = `<div class="text-xs text-center text-[#8a7566] py-8">No pages yet.<br>Click "Add" above.</div>`;
+                return;
+            }
+            
+            book.pages.forEach((page, index) => {
+                const div = document.createElement('div');
+                div.className = `page-list-item flex items-center gap-2 px-3 py-2.5 mx-1 mb-1 rounded-lg text-sm ${index === currentPageIndex ? 'active' : ''}`;
+                
+                const p = normalizePage(page, index);
+                const imgCount = (p.images || []).filter((im) => im.src).length;
+                const slotN = layoutMeta(p.layout).slots;
+                const layoutShort = layoutMeta(p.layout).label;
+                
+                div.innerHTML = `
+                    <div class="flex-1 min-w-0">
+                        <div class="flex items-center gap-x-2">
+                            <div class="font-medium truncate">${p.title || 'Untitled page'}</div>
+                            ${imgCount ? `<i class="fa-solid fa-image text-[#8a7566] text-xs" title="${imgCount}/${slotN || 0} images"></i>` : ''}
+                        </div>
+                        <div class="text-[9px] text-[#a08f7b] truncate">${layoutShort}</div>
+                        <div class="text-[10px] text-[#8a7566] truncate">${p.text ? p.text.substring(0, 45) + '...' : 'No text yet'}</div>
+                    </div>
+                    <div class="flex gap-x-1 opacity-50">
+                        <button onclick="event.stopImmediatePropagation(); movePage(${index}, -1)" class="px-1 hover:opacity-100"><i class="fa-solid fa-arrow-up text-xs"></i></button>
+                        <button onclick="event.stopImmediatePropagation(); movePage(${index}, 1)" class="px-1 hover:opacity-100"><i class="fa-solid fa-arrow-down text-xs"></i></button>
+                    </div>
+                `;
+                
+                div.onclick = () => selectPage(index);
+                
+                // Context menu delete
+                div.oncontextmenu = (e) => {
+                    e.preventDefault();
+                    if (confirm(`Delete page "${page.title}"?`)) {
+                        deletePage(index);
+                    }
+                };
+                
+                container.appendChild(div);
+            });
+            
+            document.getElementById('page-count').textContent = book.pages.length;
+        }
+        
+        function selectPage(index) {
+            if (index < 0 || index >= book.pages.length) return;
+            currentPageIndex = index;
+            activeImageSlot = 0;
+            activeTextSlot = 0;
+            renderPageList();
+            renderPreview();
+            renderControls();
+            saveToLocalStorage();
+        }
+        
+        function addNewPage() {
+            const newPage = normalizePage({
+                id: Date.now(),
+                title: `Page ${book.pages.length + 1}`,
+                text: "",
+                layout: DEFAULT_LAYOUT,
+                textPrompt: ""
+            }, book.pages.length);
+            
+            book.pages.push(newPage);
+            activeImageSlot = 0;
+            currentPageIndex = book.pages.length - 1;
+            
+            renderPageList();
+            renderPreview();
+            renderControls();
+            saveToLocalStorage();
+            
+            // Focus the title editor
+            setTimeout(() => {
+                const input = document.getElementById('current-page-title');
+                if (input) input.focus();
+            }, 50);
+        }
+        
+        function deletePage(index) {
+            if (book.pages.length <= 1) {
+                alert("You need at least one page.");
+                return;
+            }
+            
+            book.pages.splice(index, 1);
+            
+            if (currentPageIndex >= book.pages.length) {
+                currentPageIndex = book.pages.length - 1;
+            }
+            
+            renderPageList();
+            renderPreview();
+            renderControls();
+            saveToLocalStorage();
+        }
+        
+        function movePage(index, direction) {
+            const newIndex = index + direction;
+            if (newIndex < 0 || newIndex >= book.pages.length) return;
+            
+            const page = book.pages.splice(index, 1)[0];
+            book.pages.splice(newIndex, 0, page);
+            
+            currentPageIndex = newIndex;
+            renderPageList();
+            renderPreview();
+            renderControls();
+            saveToLocalStorage();
+        }
+        
+        function updateCurrentPageTitle() {
+            const input = document.getElementById('current-page-title');
+            if (!input || !book.pages[currentPageIndex]) return;
+            
+            book.pages[currentPageIndex].title = input.value;
+            renderPageList();
+            renderPreview();
+            saveToLocalStorage();
+        }
+        
+        function focusPageTitleEditor() {
+            const input = document.getElementById('current-page-title');
+            if (input) {
+                input.focus();
+                input.select();
+            }
+        }
+        
+        function renderPreview() {
+            const page = book.pages[currentPageIndex];
+            if (!page) return;
+            const normalized = normalizePage(page, currentPageIndex);
+            book.pages[currentPageIndex] = normalized;
+            
+            document.getElementById('preview-page-title').textContent = normalized.title || 'Untitled';
+            document.getElementById('preview-page-number').textContent =
+                `${currentPageIndex + 1} / ${book.pages.length}`;
+            document.getElementById('page-indicator').textContent =
+                `Page ${currentPageIndex + 1} of ${book.pages.length}`;
+
+            const body = document.getElementById('preview-body');
+            if (!body) return;
+
+            const layout = normalized.layout;
+            const imgs = normalized.images || [];
+            const tcss = textStyleToInlineCss(normalized.textStyle);
+            const textBlock = `<div class="page-text flex-1 kindle-text kindle-body-text" style="${tcss}">${previewTextHtml(normalized)}</div>`;
+            const s0 = imgs[0]?.src || '';
+            const s1 = imgs[1]?.src || '';
+            const s2 = imgs[2]?.src || '';
+
+            let html = '';
+            switch (layout) {
+                case 'text-only':
+                    html = textBlock;
+                    break;
+                case 'custom':
+                    html = renderCustomPreview(normalized);
+                    break;
+                case 'image-only':
+                    html = `<div class="mb-2">${previewImageHtml(s0, 480, 'Full-page illustration')}</div>`;
+                    if (normalized.text) html += `<div class="mt-3 kindle-text kindle-body-text" style="${tcss}">${previewTextHtml(normalized)}</div>`;
+                    break;
+                case 'image-bottom':
+                    html = textBlock + `<div class="mt-4">${previewImageHtml(s0, 280, 'Illustration')}</div>`;
+                    break;
+                case 'split':
+                    html = `<div class="layout-split">
+                        <div>${previewImageHtml(s0, 360, 'Illustration')}</div>
+                        <div class="page-text kindle-text kindle-body-text" style="${tcss}">${previewTextHtml(normalized)}</div>
+                    </div>`;
+                    break;
+                case 'two-stack':
+                    html = `<div class="layout-stack mb-4">
+                        ${previewImageHtml(s0, 200, 'Image 1')}
+                        ${previewImageHtml(s1, 200, 'Image 2')}
+                    </div>${textBlock}`;
+                    break;
+                case 'two-side':
+                    html = `<div class="layout-two-side mb-4">
+                        ${previewImageHtml(s0, 220, 'Image 1')}
+                        ${previewImageHtml(s1, 220, 'Image 2')}
+                    </div>${textBlock}`;
+                    break;
+                case 'three-row':
+                    html = `<div class="layout-three mb-4">
+                        ${previewImageHtml(s0, 160, '1')}
+                        ${previewImageHtml(s1, 160, '2')}
+                        ${previewImageHtml(s2, 160, '3')}
+                    </div>${textBlock}`;
+                    break;
+                case 'image-top':
+                default:
+                    html = `<div class="mb-5">${previewImageHtml(s0, 320, 'Illustration')}</div>${textBlock}`;
+                    break;
+            }
+            body.innerHTML = html;
+            applyTextStyleToPreviewDom();
+        }
+        
+        function renderControls() {
+            const page = book.pages[currentPageIndex];
+            if (!page) return;
+            book.pages[currentPageIndex] = normalizePage(page, currentPageIndex);
+            const p = book.pages[currentPageIndex];
+            
+            document.getElementById('current-page-title').value = p.title || '';
+            
+            const styleEl = document.getElementById('book-style-notes');
+            if (styleEl) styleEl.value = book.bookStyleNotes || '';
+            
+            document.getElementById('text-prompt').value = p.textPrompt || '';
+            document.getElementById('page-text-editor').value = getActiveTextContent();
+
+            renderLayoutPicker();
+            renderSlotPicker();
+            renderTextSlotPicker();
+            renderTextStyleControls();
+
+            const slots = getPageSlotCount(p);
+            const slot = Math.min(activeImageSlot, Math.max(0, slots - 1));
+            activeImageSlot = slots ? slot : 0;
+            const active = p.images?.[activeImageSlot];
+
+            const promptEl = document.getElementById('image-prompt');
+            if (promptEl) {
+                promptEl.value = active?.prompt || '';
+                promptEl.disabled = slots === 0;
+            }
+
+            // Soft-disable image AI for text-only
+            const imageSection = promptEl?.closest('.p-4');
+            if (imageSection) {
+                imageSection.style.opacity = slots === 0 ? '0.45' : '';
+            }
+            
+            const img = document.getElementById('current-illustration');
+            const placeholder = document.getElementById('illustration-placeholder');
+            const filename = document.getElementById('illustration-filename');
+            const src = active?.src || '';
+            
+            if (src) {
+                img.src = src;
+                img.style.display = 'block';
+                placeholder.style.display = 'none';
+                filename.textContent = (slots > 1 ? `Slot ${activeImageSlot + 1}: ` : '') +
+                    (src.startsWith('data:') ? '(embedded)' : (src.split('/').pop() || ''));
+            } else {
+                img.style.display = 'none';
+                placeholder.style.display = 'block';
+                filename.textContent = slots === 0 ? 'Text-only layout' : (slots > 1 ? `Slot ${activeImageSlot + 1} empty` : '');
+            }
+        }
+        
+        function updatePreviewFromEditor() {
+            const editor = document.getElementById('page-text-editor');
+            if (!book.pages[currentPageIndex]) return;
+            
+            setActiveTextContent(editor.value);
+            // Live-update custom text box without full re-render when possible
+            const page = currentPage();
+            if (isCustomLayout(page)) {
+                const el = document.querySelector(`.custom-text-box[data-slot="${activeTextSlot}"] .page-text`);
+                if (el) {
+                    el.innerHTML = previewTextBoxHtml(editor.value, `Text ${activeTextSlot + 1} — short rhyme / caption`);
+                    el.setAttribute('style', textStyleToInlineCss(getActiveTextStyle()));
+                } else {
+                    renderPreview();
+                }
+                renderTextSlotPicker();
+            } else {
+                renderPreview();
+            }
+            renderPageList();
+            saveToLocalStorage();
+        }
+        
+        function updateBookHeader() {
+            const titleInput = document.getElementById('book-title');
+            const authorInput = document.getElementById('book-author');
+            
+            titleInput.oninput = () => {
+                book.title = titleInput.value;
+                saveToLocalStorage();
+            };
+            
+            authorInput.oninput = () => {
+                book.author = authorInput.value;
+                saveToLocalStorage();
+            };
+            
+            titleInput.value = book.title;
+            authorInput.value = book.author;
+        }
+        
+        function setupStylePresets() {
+            const container = document.getElementById('style-presets');
+            container.innerHTML = '';
+            
+            stylePresets.forEach(style => {
+                const btn = document.createElement('button');
+                btn.className = `text-[10px] px-2.5 py-0.5 rounded-full border border-[#d4c4a8] hover:bg-white text-[#6b5c51]`;
+                btn.textContent = style;
+                
+                btn.onclick = () => {
+                    const promptArea = document.getElementById('image-prompt');
+                    const current = promptArea.value.trim();
+                    const styleSuffix = ` in ${style.toLowerCase()} style`;
+                    
+                    if (!current) {
+                        promptArea.value = `Beautiful storybook illustration` + styleSuffix;
+                    } else if (!current.toLowerCase().includes(style.toLowerCase())) {
+                        promptArea.value = current + styleSuffix;
+                    }
+                    
+                    promptArea.focus();
+                };
+                
+                container.appendChild(btn);
+            });
+        }
+        
+        // === AI Generation Functions (prototype) ===
+        
+        function showToast(message, type = 'info') {
+            const container = document.getElementById('toast-container');
+            const toast = document.createElement('div');
+            toast.className = `toast px-4 py-2 rounded-xl shadow-lg text-sm flex items-center gap-x-2 max-w-xs ${type === 'success' ? 'bg-emerald-700 text-white' : 'bg-[#3f2e23] text-white'}`;
+            toast.innerHTML = `
+                <div>${message}</div>
+            `;
+            container.appendChild(toast);
+            
+            setTimeout(() => {
+                toast.style.transition = 'all 0.25s';
+                toast.style.opacity = '0';
+                setTimeout(() => toast.remove(), 200);
+            }, 2600);
+        }
+        
+        function getBookContextForPage(pageIndex) {
+            const page = book.pages[pageIndex];
+            let ctx = `Book Title: "${book.title || 'Untitled Book'}"\n`;
+            if (book.author) ctx += `Author: ${book.author}\n`;
+            
+            const styleNotes = (document.getElementById('book-style-notes')?.value || '').trim();
+            if (styleNotes) {
+                ctx += `Overall Style / Tone Notes: ${styleNotes}\n`;
+            }
+            ctx += `Current Page: ${pageIndex + 1} of ${book.pages.length} — Title: "${page.title || 'Untitled'}"\n`;
+            if (isCustomLayout(page) && (page.texts || []).length > 1) {
+                ctx += `This page has ${page.texts.length} short text boxes (rhyme/caption style). You are writing text box ${activeTextSlot + 1} of ${page.texts.length}. Keep it short and musical if it is a rhyme.\n`;
+            }
+            ctx += '\n';
+            
+            if (pageIndex > 0) {
+                const prev = book.pages[pageIndex - 1];
+                ctx += `Previous Page Content (for continuity):\n${getPageTextCombined(prev) || '(empty)'}\n\n`;
+            }
+            if (isCustomLayout(page) && (page.texts || []).length > 1) {
+                const others = page.texts
+                    .map((t, i) => i === activeTextSlot ? null : `Text box ${i + 1}: ${t.content || '(empty)'}`)
+                    .filter(Boolean)
+                    .join('\n');
+                if (others) ctx += `Other text boxes on this page:\n${others}\n\n`;
+            }
+            return ctx;
+        }
+
+        function saveBookStyleNotes() {
+            // Persist in localStorage along with the book
+            saveToLocalStorage();
+        }
+
+        // Load style notes when rendering controls
+        function loadBookStyleNotes() {
+            // For now we just read from the textarea on demand.
+            // If we want to persist per-book we can extend book object later.
+        }
+
+        function setGenerateBusy(kind, busy, label) {
+            // kind: 'text' | 'image'
+            const buttons = kind === 'text'
+                ? document.querySelectorAll('button[onclick="generateText()"], button[onclick="regenerateText()"]')
+                : document.querySelectorAll('button[onclick="generateIllustration()"], button[onclick="regenerateIllustration()"]');
+            buttons.forEach((btn) => {
+                btn.disabled = !!busy;
+                btn.style.opacity = busy ? '0.6' : '';
+                btn.style.pointerEvents = busy ? 'none' : '';
+            });
+            if (busy && label) showToast(label, 'info');
+        }
+
+        function applyGeneratedText(result) {
+            const editor = document.getElementById('page-text-editor');
+            if (editor) {
+                editor.value = result;
+                editor.focus();
+            }
+            setActiveTextContent(result);
+            renderPreview();
+            renderTextSlotPicker();
+            renderPageList();
+            saveToLocalStorage();
+        }
+
+        function showChatFallback(instruction) {
+            const details = document.getElementById('text-chat-fallback');
+            const promptDisplay = document.getElementById('text-full-prompt');
+            const responseBox = document.getElementById('text-grok-response');
+            if (promptDisplay) promptDisplay.value = instruction || '';
+            if (responseBox) responseBox.value = '';
+            if (details) details.open = true;
+        }
+
+        async function generateText() {
+            const promptEl = document.getElementById('text-prompt');
+            const prompt = promptEl.value.trim();
+            
+            if (!prompt) {
+                showToast("Write a prompt first (example: 'the fox feels a surge of courage...')");
+                promptEl.focus();
+                return;
+            }
+            
+            const page = currentPage();
+            page.textPrompt = prompt;
+            
+            const context = getBookContextForPage(currentPageIndex);
+            const multiText = isCustomLayout(page) && getPageTextCount(page) > 1;
+            const instruction = multiText
+                ? `${context}User's request for text box ${activeTextSlot + 1} of ${getPageTextCount(page)}:\n"${prompt}"\n\nWrite a SHORT children's rhyme or caption for this text box only (about 1–4 lines, or ~20–60 words).\n- Warm, musical, easy to read aloud.\n- Fits a picture-book text box, not a full page essay.\n- Output only the text for this box (no labels, no "Text box 1:").`
+                : `${context}User's request for this page:\n"${prompt}"\n\nPlease write a complete, self-contained page of approximately 160-190 words.\n- Maintain consistent tone and style with the previous page.\n- Advance the story naturally.\n- Keep the language warm, slightly magical, and suitable for a children's/young adult illustrated book.\n\nOutput only the page text (no extra commentary).`;
+            
+            setGenerateBusy('text', true, multiText
+                ? `Writing short rhyme for text box ${activeTextSlot + 1}…`
+                : 'Generating with local Ollama via backend…');
+            try {
+                const result = await callLocalGenerateText(instruction);
+                if (result) {
+                    applyGeneratedText(result);
+                    showToast(multiText
+                        ? `Text box ${activeTextSlot + 1} filled.`
+                        : 'Text generated with local model — already on the page.', 'success');
+                    return;
+                }
+                throw new Error('Empty response from backend');
+            } catch (e) {
+                console.warn('Text generate failed:', e);
+                const msg = (e && e.message) ? e.message : String(e);
+                showToast(`Generate failed: ${msg}`, 'info');
+                showChatFallback(instruction);
+                navigator.clipboard.writeText(instruction).catch(() => {});
+            } finally {
+                setGenerateBusy('text', false);
+            }
+            saveToLocalStorage();
+        }
+        
+        async function regenerateText() {
+            const page = book.pages[currentPageIndex];
+            const basePrompt = page.textPrompt || document.getElementById('text-prompt').value || "Rewrite this page with more wonder and sensory detail";
+            const context = getBookContextForPage(currentPageIndex);
+            const currentBit = getActiveTextContent() || '(empty)';
+            const multiText = isCustomLayout(page) && getPageTextCount(page) > 1;
+            
+            const instruction = multiText
+                ? `${context}Please REGENERATE text box ${activeTextSlot + 1}.\n\nCurrent text:\n${currentBit}\n\nUser's direction: "${basePrompt}"\n\n- Keep it short (1–4 lines / rhyme-friendly).\n- Fresh wording, same spirit.\n\nOutput only the new text for this box.`
+                : `${context}Please REGENERATE a fresh version of this page.\n\nCurrent page text:\n${currentBit}\n\nUser's direction: "${basePrompt}"\n\n- Keep similar length (~160-190 words).\n- Vary the wording and sentence structure while keeping the same events and emotional beat.\n- Maintain continuity with the previous page.\n\nOutput only the new page text.`;
+            
+            setGenerateBusy('text', true, 'Regenerating with local Ollama…');
+            try {
+                const result = await callLocalGenerateText(instruction);
+                if (result) {
+                    applyGeneratedText(result);
+                    showToast('Fresh variation on the page.', 'success');
+                    return;
+                }
+                throw new Error('Empty response from backend');
+            } catch (e) {
+                console.warn('Text regenerate failed:', e);
+                showToast(`Regen failed: ${(e && e.message) || e}`, 'info');
+                navigator.clipboard.writeText(instruction).catch(() => {});
+            } finally {
+                setGenerateBusy('text', false);
+            }
+        }
+        
+        async function generateIllustration() {
+            const page = currentPage();
+            if (!page) return;
+            const slots = getPageSlotCount(page);
+            if (slots === 0) {
+                showToast('Text-only layout — switch layout to add images.');
+                return;
+            }
+            if (activeImageSlot >= slots) activeImageSlot = 0;
+
+            const promptEl = document.getElementById('image-prompt');
+            const prompt = promptEl.value.trim();
+            
+            if (!prompt) {
+                showToast("Describe the illustration you want.");
+                return;
+            }
+            
+            if (!page.images[activeImageSlot]) page.images[activeImageSlot] = emptyImageSlot();
+            page.images[activeImageSlot].prompt = prompt;
+            syncLegacyImageFields(page);
+            
+            let fullPrompt = `${prompt}. High quality children's storybook illustration style, detailed, atmospheric, suitable for Kindle e-books.`;
+            if (slots > 1) {
+                fullPrompt += ` This is panel/image ${activeImageSlot + 1} of ${slots} on the same page — keep style consistent with sibling panels.`;
+            }
+            
+            let hasPrevImage = false;
+            for (let i = 0; i < book.pages.length; i++) {
+                const imgs = book.pages[i].images || [];
+                if (imgs.some((im) => im.src) || book.pages[i].image) {
+                    hasPrevImage = true;
+                    break;
+                }
+            }
+            if (hasPrevImage) {
+                fullPrompt += " Maintain the same whimsical storybook art style, color palette, and character designs as the previous illustrations in this book.";
+            }
+            
+            setGenerateBusy('image', true, `Generating image ${activeImageSlot + 1}/${slots}…`);
+            try {
+                const imageSrc = await callLocalGenerateImage(fullPrompt);
+                if (imageSrc) {
+                    setImageAtSlot(activeImageSlot, imageSrc, prompt);
+                    showToast(slots > 1
+                        ? `Image ${activeImageSlot + 1} of ${slots} placed.`
+                        : 'Illustration placed on the page.', 'success');
+                    return;
+                }
+                throw new Error('Backend returned no image');
+            } catch (e) {
+                console.warn('Image generate failed:', e);
+                showToast(`Image generate failed: ${(e && e.message) || e}`, 'info');
+                navigator.clipboard.writeText(fullPrompt).catch(() => {});
+            } finally {
+                setGenerateBusy('image', false);
+            }
+        }
+        
+        async function regenerateIllustration() {
+            const page = currentPage();
+            if (!page) return;
+            const slot = page.images?.[activeImageSlot];
+            const base = slot?.prompt || document.getElementById('image-prompt').value.trim() || "the same scene but with different lighting and more magic";
+            document.getElementById('image-prompt').value = base;
+            await generateIllustration();
+        }
+        
+        function generateVariations() {
+            const page = book.pages[currentPageIndex];
+            const basePrompt = document.getElementById('image-prompt').value.trim() || page.imagePrompt;
+            
+            if (!basePrompt) {
+                showToast("Add a prompt first");
+                return;
+            }
+            
+            let msg = `Please generate THREE distinct variations of this illustration for page ${currentPageIndex + 1}:\n\nBase prompt: "${basePrompt}"\n\nFor each variation:\n- Keep consistent character design and storybook style with the rest of the book.\n- Vary camera angle, time of day, emotional mood, or composition.\n- Output the three improved prompts clearly numbered.`;
+            
+            navigator.clipboard.writeText(msg).catch(() => {});
+            showToast("✅ 3-variations prompt copied (with book context)!");
+            setTimeout(() => {
+                showToast("Paste into chat and ask for three variations", 'success');
+            }, 400);
+        }
+        
+        function removeIllustration() {
+            const page = currentPage();
+            if (!page) return;
+            const slots = getPageSlotCount(page);
+            if (slots === 0) return;
+            setImageAtSlot(activeImageSlot, '', page.images?.[activeImageSlot]?.prompt || '');
+            showToast(slots > 1 ? `Cleared image slot ${activeImageSlot + 1}` : 'Illustration removed');
+        }
+
+        // === Image upload / drag & drop (stores as data URL for portability) ===
+        function setIllustrationFromFile(file) {
+            if (!file || !file.type.startsWith('image/')) {
+                showToast("Please select a valid image file");
+                return;
+            }
+            const page = currentPage();
+            if (!page) return;
+            if (getPageSlotCount(page) === 0) {
+                showToast('Text-only layout — switch layout to add images.');
+                return;
+            }
+            const reader = new FileReader();
+            reader.onload = (e) => {
+                const dataUrl = e.target.result;
+                const prevPrompt = page.images?.[activeImageSlot]?.prompt;
+                setImageAtSlot(activeImageSlot, dataUrl, prevPrompt || ('Uploaded: ' + file.name));
+                showToast(getPageSlotCount(page) > 1
+                    ? `Uploaded into image slot ${activeImageSlot + 1}`
+                    : 'Illustration added from file', 'success');
+            };
+            reader.readAsDataURL(file);
+        }
+
+        function uploadIllustration(input) {
+            const file = input.files[0];
+            if (file) setIllustrationFromFile(file);
+            input.value = ''; // reset
+        }
+
+        function allowDrop(ev) {
+            ev.preventDefault();
+            ev.currentTarget.classList.add('!border-[#3f2e23]', 'border-solid');
+        }
+
+        function dropIllustration(ev) {
+            ev.preventDefault();
+            ev.currentTarget.classList.remove('!border-[#3f2e23]', 'border-solid');
+            const file = ev.dataTransfer.files[0];
+            if (file) setIllustrationFromFile(file);
+        }
+
+        // Helper: Convert relative image paths to data URLs (makes book fully portable for EPUB)
+        async function embedImagesForExport() {
+            if (window.location.protocol === 'file:') {
+                return 0;
+            }
+            let converted = 0;
+            let failed = 0;
+            for (let i = 0; i < book.pages.length; i++) {
+                const page = normalizePage(book.pages[i], i);
+                for (let s = 0; s < (page.images || []).length; s++) {
+                    const src = page.images[s].src;
+                    if (src && !src.startsWith('data:')) {
+                        try {
+                            const response = await fetch(src);
+                            if (!response.ok) throw new Error('fetch failed');
+                            const blob = await response.blob();
+                            const dataUrl = await new Promise((resolve, reject) => {
+                                const r = new FileReader();
+                                r.onload = () => resolve(r.result);
+                                r.onerror = reject;
+                                r.readAsDataURL(blob);
+                            });
+                            page.images[s].src = dataUrl;
+                            converted++;
+                        } catch (e) {
+                            console.warn("Could not embed image", i, s, e);
+                            failed++;
+                        }
+                    }
+                }
+                syncLegacyImageFields(page);
+                book.pages[i] = page;
+            }
+            if (converted > 0) {
+                renderPreview();
+                renderControls();
+                saveToLocalStorage();
+                showToast(`${converted} image(s) embedded as data URLs for portable export`, 'success');
+            }
+            if (failed > 0) {
+                showToast(`${failed} image(s) could not be auto-embedded. Use the Upload button or run a local server.`);
+            }
+            return converted;
+        }
+        
+        function updatePreviewImage(newPath) {
+            setImageAtSlot(activeImageSlot, newPath);
+        }
+        
+        // === Export Functions ===
+        
+        function exportAsHTML() {
+            const title = book.title || "My Book";
+            const author = book.author || "";
+            
+            let html = `<!DOCTYPE html>
+<html>
+<head>
+<meta charset="UTF-8">
+<title>${title}</title>
+<style>
+body { font-family: Georgia, serif; max-width: 640px; margin: 40px auto; padding: 20px; line-height: 1.75; color: #222; }
+h1 { text-align: center; font-size: 2.1em; }
+.page { margin-bottom: 80px; page-break-after: always; }
+img { max-width: 100%; margin: 20px 0; border-radius: 4px; }
+.title { font-size: 1.1em; text-align: center; color: #555; margin-bottom: 60px; }
+</style>
+</head>
+<body>
+<div class="title"><h1>${title}</h1><p>${author}</p></div>`;
+            
+            book.pages.forEach((page, i) => {
+                const norm = normalizePage(page, i);
+                html += `<div class="page">`;
+                if (norm.title) html += `<h2 style="text-align:center;margin-bottom:1.2em;">${norm.title}</h2>`;
+                (norm.images || []).forEach((im, si) => {
+                    if (im.src) html += `<img src="${im.src}" alt="${(norm.title || '') + ' ' + (si + 1)}">`;
+                });
+                if (norm.layout === 'custom' && Array.isArray(norm.texts)) {
+                    norm.texts.forEach((t) => {
+                        if (t.content) {
+                            const css = textStyleToInlineCss(t);
+                            html += `<div style="${css};margin:0.8em 0;">${t.content.replace(/\n/g, '<br>')}</div>`;
+                        }
+                    });
+                } else if (norm.text) {
+                    const css = textStyleToInlineCss(norm.textStyle);
+                    html += `<div style="${css}">${norm.text.replace(/\n/g, '<br><br>')}</div>`;
+                }
+                html += `</div>`;
+            });
+            
+            html += `</body></html>`;
+            
+            const blob = new Blob([html], { type: 'text/html' });
+            const url = URL.createObjectURL(blob);
+            const a = document.createElement('a');
+            a.href = url;
+            a.download = `${title.replace(/[^a-z0-9]/gi, '_')}.html`;
+            a.click();
+            URL.revokeObjectURL(url);
+            
+            showToast("Exported clean HTML (great for previewing or conversion)");
+        }
+        
+        // === Real EPUB Export using JSZip ===
+        async function exportEPUB() {
+            try {
+                console.log('exportEPUB called');
+                if (typeof JSZip === 'undefined') {
+                    showToast("JSZip library failed to load. Refresh the page and try again.");
+                    return;
+                }
+                if (!book.pages || book.pages.length === 0) {
+                    showToast("No pages to export!");
+                    return;
+                }
+
+                const zip = new JSZip();
+
+            // 1. mimetype (must be first and uncompressed)
+            zip.file("mimetype", "application/epub+zip", { compression: "STORE" });
+
+            // 2. META-INF
+            zip.file("META-INF/container.xml", `<?xml version="1.0"?>
+<container version="1.0" xmlns="urn:oasis:names:tc:opendocument:xmlns:container">
+  <rootfiles>
+    <rootfile full-path="OEBPS/content.opf" media-type="application/oebps-package+xml"/>
+  </rootfiles>
+</container>`);
+
+            // 3. OEBPS folder
+            const oebps = zip.folder("OEBPS");
+
+            // Collect images and convert to usable format for zip
+            const imageFiles = {}; // key: image filename in epub, value: base64 data or Uint8Array
+            const imageManifestItems = [];
+            let imageCounter = 0;
+
+            const pagesXhtml = [];
+            let imagesExpected = 0;
+            let imagesIncluded = 0;
+
+            // Process each page
+            for (let i = 0; i < book.pages.length; i++) {
+                const page = book.pages[i];
+                const pageId = `page_${String(i+1).padStart(2, '0')}`;
+                let xhtml = `<?xml version="1.0" encoding="UTF-8"?>
+<!DOCTYPE html>
+<html xmlns="http://www.w3.org/1999/xhtml">
+<head>
+  <title>${escapeXml(page.title || 'Page ' + (i+1))}</title>
+  <link rel="stylesheet" type="text/css" href="../style.css"/>
+</head>
+<body>
+`;
+
+                if (page.title) {
+                    xhtml += `  <h1 class="page-title">${escapeXml(page.title)}</h1>\n`;
+                }
+
+                const norm = normalizePage(page, i);
+                const layout = norm.layout;
+                const slotSrcs = (norm.images || []).map((im) => im.src).filter(Boolean);
+
+                async function embedOneImage(imgDataRaw, alt) {
+                    imagesExpected++;
+                    let imgData = imgDataRaw;
+                    let mime = 'image/jpeg';
+                    let ext = 'jpg';
+
+                    if (imgData.startsWith('data:')) {
+                        const commaIdx = imgData.indexOf(',');
+                        if (commaIdx > 0) {
+                            const header = imgData.substring(0, commaIdx);
+                            imgData = imgData.substring(commaIdx + 1);
+                            const mimeMatch = header.match(/^data:(image\/[^;]+)/);
+                            if (mimeMatch) mime = mimeMatch[1];
+                            ext = mime.includes('png') ? 'png' : 'jpg';
+                        }
+                    } else {
+                        try {
+                            const resp = await fetch(imgData);
+                            const blob = await resp.blob();
+                            mime = blob.type || 'image/jpeg';
+                            ext = mime.includes('png') ? 'png' : 'jpg';
+                            const ab = await blob.arrayBuffer();
+                            imgData = btoa(String.fromCharCode(...new Uint8Array(ab)));
+                        } catch (e) {
+                            console.warn("Could not fetch relative image, skipping in EPUB:", imgData);
+                            return '';
+                        }
+                    }
+
+                    if (!imgData) return '';
+                    const currentImgIdx = imageCounter++;
+                    const imgFilename = `img_${String(currentImgIdx).padStart(2,'0')}.${ext}`;
+                    imageFiles[imgFilename] = imgData;
+                    imageManifestItems.push({
+                        id: `img_${currentImgIdx}`,
+                        href: `images/${imgFilename}`,
+                        mediaType: mime
+                    });
+                    imagesIncluded++;
+                    return `  <div class="illustration"><img src="../images/${imgFilename}" alt="${escapeXml(alt || '')}"/></div>\n`;
+                }
+
+                const bodyCss = textStyleToInlineCss(norm.textStyle, { forEpub: true });
+                const textParas = page.text
+                    ? page.text.split(/\n+/).filter(p => p.trim())
+                        .map(p => `  <p class="body-text" style="${bodyCss}">${escapeXml(p.trim())}</p>`).join('\n')
+                    : '';
+
+                // Order content by layout
+                if (layout === 'text-only') {
+                    xhtml += textParas;
+                } else if (layout === 'custom') {
+                    // Freeform: absolute % positions (Kindle-ish subset; best-effort)
+                    xhtml += `  <div class="custom-page" style="position:relative;min-height:24em;">\n`;
+                    for (let si = 0; si < (norm.images || []).length; si++) {
+                        const im = norm.images[si];
+                        if (!im.src) continue;
+                        const f = normalizeFrame(im, defaultFrameForIndex(si, norm.images.length));
+                        // embedOneImage returns a div; wrap with absolute style
+                        let chunk = await embedOneImage(im.src, page.title);
+                        // rewrite wrapper for absolute placement
+                        chunk = chunk.replace(
+                            '<div class="illustration">',
+                            `<div class="illustration custom-abs" style="position:absolute;left:${f.x}%;top:${f.y}%;width:${f.w}%;height:${f.h}%;overflow:hidden;">`
+                        );
+                        chunk = chunk.replace('<img ', '<img style="width:100%;height:100%;object-fit:cover;" ');
+                        xhtml += chunk;
+                    }
+                    const textList = (norm.texts && norm.texts.length)
+                        ? norm.texts
+                        : [emptyTextSlot(norm.text || '', norm.textFrame, norm.textStyle)];
+                    for (let ti = 0; ti < textList.length; ti++) {
+                        const tb = textList[ti];
+                        const content = (tb.content || '').trim();
+                        if (!content) continue;
+                        const tf = normalizeFrame(tb, defaultTextFrameForIndex(ti, textList.length));
+                        const tcss = textStyleToInlineCss(tb, { forEpub: true });
+                        const paras = content.split(/\n+/).filter(p => p.trim())
+                            .map(p => `  <p class="body-text" style="${tcss}">${escapeXml(p.trim())}</p>`).join('\n');
+                        xhtml += `  <div class="custom-text" style="position:absolute;left:${tf.x}%;top:${tf.y}%;width:${tf.w}%;height:${tf.h}%;overflow:hidden;">\n${paras}\n  </div>\n`;
+                    }
+                    xhtml += `  </div>\n`;
+                } else if (layout === 'image-bottom') {
+                    xhtml += textParas + '\n';
+                    for (const src of slotSrcs) xhtml += await embedOneImage(src, page.title);
+                } else if (layout === 'split' && slotSrcs[0]) {
+                    xhtml += `  <div class="split">\n`;
+                    xhtml += await embedOneImage(slotSrcs[0], page.title);
+                    xhtml += textParas ? `  <div class="split-text">\n${textParas}\n  </div>\n` : '';
+                    xhtml += `  </div>\n`;
+                } else if (layout === 'image-only') {
+                    for (const src of slotSrcs) xhtml += await embedOneImage(src, page.title);
+                    if (textParas) xhtml += textParas;
+                } else {
+                    // image-top, two-*, three-*, default: images then text
+                    for (const src of slotSrcs) xhtml += await embedOneImage(src, page.title);
+                    if (textParas) xhtml += textParas;
+                }
+
+                xhtml += `
+</body>
+</html>`;
+
+                pagesXhtml.push({ id: pageId, filename: `Text/${pageId}.xhtml`, content: xhtml });
+            }
+
+            // Add CSS
+            const css = `
+body { font-family: Georgia, "Times New Roman", serif; margin: 1em 1.5em; line-height: 1.6; color: #222; font-size: 1em; }
+/* Kindle/print-oriented defaults; per-block styles may override via inline CSS */
+body { font-family: Georgia, "Palatino Linotype", "Times New Roman", serif; font-size: 1em; line-height: 1.65; color: #222; }
+h1.page-title { text-align: center; font-size: 1.4em; margin: 0.8em 0 1em; page-break-after: avoid; font-family: Georgia, serif; }
+.illustration { text-align: center; margin: 1.2em 0; }
+.illustration img { max-width: 100%; height: auto; display: block; margin: 0 auto; }
+.split { display: flex; flex-wrap: wrap; gap: 1em; align-items: flex-start; }
+.split .illustration { flex: 1 1 45%; margin: 0; }
+.split-text { flex: 1 1 45%; }
+p, p.body-text { margin: 0.55em 0; }
+/* Readers scale base font; our size uses em relative to that */
+`;
+            oebps.file("style.css", css);
+
+            // Add images to OEBPS/images/
+            if (Object.keys(imageFiles).length > 0) {
+                const imagesFolder = oebps.folder("images");
+                for (const [filename, data] of Object.entries(imageFiles)) {
+                    // data is base64 string
+                    const binary = atob(data);
+                    const bytes = new Uint8Array(binary.length);
+                    for (let j = 0; j < binary.length; j++) {
+                        bytes[j] = binary.charCodeAt(j);
+                    }
+                    imagesFolder.file(filename, bytes);
+                }
+            }
+
+            // Add each page XHTML
+            const textFolder = oebps.folder("Text");
+            pagesXhtml.forEach(p => {
+                textFolder.file(p.filename.split('/')[1], p.content);
+            });
+
+            // content.opf
+            let manifestItems = '';
+            let spineItems = '';
+
+            pagesXhtml.forEach((p, idx) => {
+                const shortName = p.filename.split('/')[1];
+                manifestItems += `    <item id="${p.id}" href="${p.filename}" media-type="application/xhtml+xml"/>\n`;
+                spineItems += `    <itemref idref="${p.id}"/>\n`;
+            });
+
+            imageManifestItems.forEach(item => {
+                manifestItems += `    <item id="${item.id}" href="${item.href}" media-type="${item.mediaType}"/>\n`;
+            });
+
+            const opf = `<?xml version="1.0" encoding="UTF-8"?>
+<package xmlns="http://www.idpf.org/2007/opf" unique-identifier="BookID" version="3.0">
+  <metadata xmlns:dc="http://purl.org/dc/elements/1.1/">
+    <dc:title>${escapeXml(book.title || "Untitled Book")}</dc:title>
+    <dc:creator>${escapeXml(book.author || "Unknown Author")}</dc:creator>
+    <dc:language>en</dc:language>
+    <dc:identifier id="BookID">urn:uuid:${generateUUID()}</dc:identifier>
+    <meta property="dcterms:modified">${new Date().toISOString().split('.')[0]}Z</meta>
+  </metadata>
+  <manifest>
+    <item id="ncx" href="toc.ncx" media-type="application/x-dtbncx+xml"/>
+    <item id="style" href="style.css" media-type="text/css"/>
+    <item id="nav" href="nav.xhtml" media-type="application/xhtml+xml" properties="nav"/>
+${manifestItems}  </manifest>
+  <spine toc="ncx">
+${spineItems}  </spine>
+</package>`;
+
+            oebps.file("content.opf", opf);
+
+            // Minimal nav.xhtml and toc.ncx for compatibility
+            let navContent = `<?xml version="1.0" encoding="utf-8"?>
+<!DOCTYPE html>
+<html xmlns="http://www.w3.org/1999/xhtml" xmlns:epub="http://www.idpf.org/2007/ops">
+<head><title>Table of Contents</title></head>
+<body>
+  <nav epub:type="toc" id="toc">
+    <h1>Table of Contents</h1>
+    <ol>
+`;
+            pagesXhtml.forEach((p, i) => {
+                const page = book.pages[i];
+                const title = escapeXml(page.title || `Page ${i+1}`);
+                navContent += `      <li><a href="${p.filename}">${title}</a></li>\n`;
+            });
+            navContent += `    </ol>
+  </nav>
+</body>
+</html>`;
+            oebps.file("nav.xhtml", navContent);
+
+            let ncx = `<?xml version="1.0" encoding="UTF-8"?>
+<ncx xmlns="http://www.daisy.org/z3986/2005/ncx/" version="2005-1">
+  <head><meta name="dtb:uid" content="urn:uuid:${generateUUID()}"/></head>
+  <docTitle><text>${escapeXml(book.title || "Book")}</text></docTitle>
+  <navMap>
+`;
+            pagesXhtml.forEach((p, i) => {
+                const page = book.pages[i];
+                ncx += `    <navPoint id="${p.id}" playOrder="${i+1}">
+      <navLabel><text>${escapeXml(page.title || `Page ${i+1}`)}</text></navLabel>
+      <content src="${p.filename}"/>
+    </navPoint>\n`;
+            });
+            ncx += `  </navMap>
+</ncx>`;
+            oebps.file("toc.ncx", ncx);
+
+            // Generate and download the EPUB
+            try {
+                const blob = await zip.generateAsync({ type: "blob" });
+                const filename = (book.title || "book").replace(/[^a-z0-9]/gi, '_').toLowerCase() + ".epub";
+                const url = URL.createObjectURL(blob);
+                const a = document.createElement("a");
+                a.href = url;
+                a.download = filename;
+                document.body.appendChild(a);
+                a.click();
+                document.body.removeChild(a);
+                URL.revokeObjectURL(url);
+
+                let msg = `EPUB exported: ${filename}`;
+                if (imagesExpected > 0) {
+                    msg += ` (${imagesIncluded}/${imagesExpected} images included)`;
+                }
+                showToast(msg + `. Test in Kindle Previewer!`, 'success');
+
+                // Extra visible info + copy filename
+                setTimeout(() => {
+                    showToast(`File saved to your Downloads folder as: ${filename}`, 'success');
+                    navigator.clipboard.writeText(filename).catch(() => {});
+                }, 800);
+
+                if (imagesExpected > imagesIncluded) {
+                    setTimeout(() => {
+                        showToast(`Some images were missing from the EPUB. Click "Make Portable" or use Upload on affected pages, then re-export. (Often happens with direct file:// open — try a local web server.)`, 'info');
+                    }, 1800);
+                }
+            } catch (err) {
+                console.error(err);
+                showToast("EPUB export failed. Check console.");
+            }
+    } catch (outerErr) {
+            console.error("exportEPUB crashed:", outerErr);
+            showToast("EPUB export crashed unexpectedly. Press F12, go to Console tab, and tell me what the red error says.");
+        }
+    }
+
+        function escapeXml(unsafe) {
+            if (!unsafe) return '';
+            return unsafe.replace(/[<>&'"]/g, function (c) {
+                switch (c) {
+                    case '<': return '&lt;';
+                    case '>': return '&gt;';
+                    case '&': return '&amp;';
+                    case "'": return '&apos;';
+                    case '"': return '&quot;';
+                }
+            });
+        }
+
+        function generateUUID() {
+            return 'xxxxxxxx-xxxx-4xxx-yxxx-xxxxxxxxxxxx'.replace(/[xy]/g, function(c) {
+                const r = Math.random() * 16 | 0, v = c == 'x' ? r : (r & 0x3 | 0x8);
+                return v.toString(16);
+            });
+        }
+        
+        function enlargeImage(src) {
+            const modal = document.getElementById('image-modal');
+            const modalImg = document.getElementById('modal-image');
+            modalImg.src = src;
+            modal.classList.remove('hidden');
+            modal.classList.add('flex');
+        }
+        
+        function enlargeCurrentIllustration() {
+            const page = currentPage();
+            if (!page) return;
+            const src = page.images?.[activeImageSlot]?.src || page.image;
+            if (src) enlargeImage(src);
+        }
+        
+        function closeImageModal() {
+            const modal = document.getElementById('image-modal');
+            modal.classList.remove('flex');
+            modal.classList.add('hidden');
+        }
+        
+        function copyTextToClipboard() {
+            const editor = document.getElementById('page-text-editor');
+            if (!editor.value) return;
+            navigator.clipboard.writeText(editor.value).then(() => {
+                showToast("Text copied to clipboard");
+            });
+        }
+        
+        function previousPage() {
+            if (currentPageIndex > 0) {
+                selectPage(currentPageIndex - 1);
+            }
+        }
+        
+        function nextPage() {
+            if (currentPageIndex < book.pages.length - 1) {
+                selectPage(currentPageIndex + 1);
+            }
+        }
+        
+        function loadDemoBook() {
+            if (confirm("Load the demo fox story? This will replace your current book.")) {
+                createDefaultDemoPages();
+                book.title = "The Fox and the Forgotten Star";
+                book.author = "by Elara Voss";
+                book.bookStyleNotes = "warm whimsical children's storybook tone, focus on small moments of wonder and courage, gentle pacing, consistent fox character design";
+                currentPageIndex = 0;
+                
+                document.getElementById('book-title').value = book.title;
+                document.getElementById('book-author').value = book.author;
+                
+                renderPageList();
+                renderPreview();
+                renderControls();
+                saveToLocalStorage();
+                showToast("Demo book loaded. Try selecting different pages and using the AI boxes.", 'success');
+
+                // Skip auto-embed on file:// (it will always fail due to browser security)
+                if (window.location.protocol !== 'file:') {
+                    setTimeout(async () => {
+                        try { await embedImagesForExport(); } catch (e) {}
+                    }, 400);
+                }
+                showToast("Demo loaded. The Generate/Regen buttons now build much better prompts using previous pages + your Book Style Notes. Click one, then paste the copied text here in chat — I'll generate real new content for you.", 'info');
+            }
+        }
+
+        function embedDemoImagesQuick() {
+            const input = document.createElement('input');
+            input.type = 'file';
+            input.accept = 'image/*';
+            input.multiple = true;
+            input.onchange = () => {
+                const files = Array.from(input.files || []);
+                if (files.length === 0) return;
+
+                // Assign in order to the first 3 pages (Cover, Discovery, Lantern in the demo)
+                const demoPages = [0, 1, 2]; // indices in the demo book
+                let assigned = 0;
+
+                files.forEach((file, idx) => {
+                    if (assigned >= demoPages.length) return;
+                    const pageIdx = demoPages[assigned];
+                    if (!book.pages[pageIdx]) return;
+
+                    const reader = new FileReader();
+                    reader.onload = (e) => {
+                        book.pages[pageIdx].image = e.target.result;
+                        if (!book.pages[pageIdx].imagePrompt) {
+                            book.pages[pageIdx].imagePrompt = "Uploaded: " + file.name;
+                        }
+                        // Refresh UI if we're on that page or in general
+                        renderPageList();
+                        if (currentPageIndex === pageIdx) {
+                            renderPreview();
+                            renderControls();
+                        }
+                        saveToLocalStorage();
+                    };
+                    reader.readAsDataURL(file);
+                    assigned++;
+                });
+
+                showToast(`Attempting to embed ${Math.min(files.length, demoPages.length)} image(s) into demo pages.`, 'success');
+            };
+            input.click();
+        }
+        
+        function resetBook() {
+            if (!confirm("Start completely fresh? This will clear everything.")) return;
+            
+            book = {
+                title: "Untitled Book",
+                author: "",
+                pages: [normalizePage({
+                    id: Date.now(),
+                    title: "Page 1",
+                    text: "",
+                    layout: DEFAULT_LAYOUT,
+                    textPrompt: ""
+                }, 0)]
+            };
+            currentPageIndex = 0;
+            activeImageSlot = 0;
+            
+            document.getElementById('book-title').value = book.title;
+            document.getElementById('book-author').value = book.author;
+            
+            renderPageList();
+            renderPreview();
+            renderControls();
+            saveToLocalStorage();
+        }
+
+        function copyTextPrompt() {
+            const ta = document.getElementById('text-full-prompt');
+            if (ta && ta.value) {
+                navigator.clipboard.writeText(ta.value).catch(() => {});
+                showToast("Prompt copied to clipboard. Paste it in this chat!");
+            }
+        }
+
+        function applyTextResponse() {
+            const responseBox = document.getElementById('text-grok-response');
+            if (!responseBox || !responseBox.value.trim()) {
+                showToast('Nothing to apply — paste text first, or just edit Page text.');
+                return;
+            }
+            applyGeneratedText(responseBox.value.trim());
+            showToast('Applied to page text.', 'success');
+            const details = document.getElementById('text-chat-fallback');
+            if (details) details.open = false;
+        }
+        
+        function showHelp() {
+            const helpText = `How KindleForge works (current):
+
+1. Center = realistic Kindle page preview.
+2. Left = page list / outline. Add, reorder, delete pages (right-click to delete).
+3. Right = per-page AI controls:
+   - Text: Write a prompt → GENERATE or REGEN (local backend or chat-assisted)
+   - Illustration: Prompt + style presets + GENERATE / REGEN / Upload / drag image
+
+4. Save Project (top) → downloads a portable .kindleforge.json (book + embedded images).
+   Copy that file to another PC and use Load Project. Best prep for moving machines.
+5. Load Project (top) → open a saved .kindleforge.json (or a raw book JSON with pages[]).
+6. Make Portable → embeds relative images as data URLs (needs http server, not file://).
+7. Export EPUB → real .epub for Kindle Previewer / KDP.
+
+Browser auto-save still keeps your last book in localStorage for the same browser.
+
+Keyboard:
+  Left/Right — flip pages
+  Ctrl/Cmd+N — new page
+  Ctrl/Cmd+S — Save Project
+  Ctrl/Cmd+O — Load Project
+
+Tip: Run via local server (python -m http.server 8000) so image embedding works when saving.`;
+            
+            alert(helpText);
+        }
+        
+        function setupKeyboardShortcuts() {
+            document.addEventListener('keydown', function(e) {
+                // Don't steal arrows while typing in inputs/textareas
+                const tag = (e.target && e.target.tagName) || '';
+                const typing = tag === 'INPUT' || tag === 'TEXTAREA' || e.target.isContentEditable;
+
+                if (e.key === 'ArrowLeft' && !typing) {
+                    previousPage();
+                    e.preventDefault();
+                }
+                if (e.key === 'ArrowRight' && !typing) {
+                    nextPage();
+                    e.preventDefault();
+                }
+                if (e.key.toLowerCase() === 'n' && (e.ctrlKey || e.metaKey)) {
+                    e.preventDefault();
+                    addNewPage();
+                }
+                if (e.key.toLowerCase() === 's' && (e.ctrlKey || e.metaKey)) {
+                    e.preventDefault();
+                    saveProjectFile();
+                }
+                if (e.key.toLowerCase() === 'o' && (e.ctrlKey || e.metaKey)) {
+                    e.preventDefault();
+                    triggerLoadProject();
+                }
+            });
+        }
+
+        function showSettings() {
+            const modal = document.getElementById('settings-modal');
+            const backendInput = document.getElementById('backend-url');
+            const ollamaInput = document.getElementById('ollama-model');
+            const keyInput = document.getElementById('xai-api-key');
+            
+            backendInput.value = localStorage.getItem('kindleforge_backend_url') || 'http://localhost:8001';
+            ollamaInput.value = localStorage.getItem('kindleforge_ollama_model') || 'llama3.2';
+            keyInput.value = xaiApiKey || '';
+            
+            modal.classList.remove('hidden');
+            modal.classList.add('flex');
+        }
+
+        function hideSettings() {
+            const modal = document.getElementById('settings-modal');
+            modal.classList.remove('flex');
+            modal.classList.add('hidden');
+        }
+
+        function saveSettings() {
+            const backendInput = document.getElementById('backend-url');
+            const ollamaInput = document.getElementById('ollama-model');
+            const keyInput = document.getElementById('xai-api-key');
+            
+            const newBackend = backendInput.value.trim() || 'http://localhost:8001';
+            const newOllama = ollamaInput.value.trim() || 'llama3.2';
+            const newKey = keyInput.value.trim();
+            
+            localStorage.setItem('kindleforge_backend_url', newBackend);
+            localStorage.setItem('kindleforge_ollama_model', newOllama);
+            
+            xaiApiKey = newKey;
+            if (newKey) {
+                localStorage.setItem('xai_api_key', newKey);
+            } else {
+                localStorage.removeItem('xai_api_key');
+            }
+            
+            showToast("Settings saved! Use Generate buttons for local generation.", 'success');
+            hideSettings();
+        }
+
+        function clearApiKey() {
+            xaiApiKey = '';
+            localStorage.removeItem('xai_api_key');
+            document.getElementById('xai-api-key').value = '';
+            showToast("API key cleared.");
+        }
+
+        async function testBackend() {
+            const { backendUrl } = getBackendSettings();
+            const statusEl = document.getElementById('backend-status') || createStatusEl();
+            statusEl.textContent = 'Testing...';
+            try {
+                const resp = await fetch(`${backendUrl}/health`);
+                if (resp.ok) {
+                    const data = await resp.json();
+                    const ollamaBit = data.ollama_ok
+                        ? `Ollama OK (${(data.ollama_models || []).slice(0, 3).join(', ') || 'models'})`
+                        : `Ollama DOWN: ${data.ollama_error || 'not reachable'}`;
+                    statusEl.textContent = `✅ Backend OK · ${ollamaBit} · images=${data.image_provider || '?'}`;
+                    if (data.ollama_ok) {
+                        showToast('Backend + Ollama ready — Generate should work.', 'success');
+                    } else {
+                        showToast('Backend up, but Ollama is not. Start Ollama, then retry.', 'info');
+                    }
+                } else {
+                    statusEl.textContent = `❌ Backend error: ${resp.status}`;
+                }
+            } catch (e) {
+                statusEl.textContent = `❌ Cannot reach ${backendUrl}. Run start_backend.bat`;
+                showToast('Backend not reachable. Double-click backend/start_backend.bat', 'info');
+            }
+        }
+
+        function createStatusEl() {
+            const el = document.createElement('div');
+            el.id = 'backend-status';
+            el.style.fontSize = '10px';
+            el.style.marginTop = '4px';
+            const settingsContent = document.querySelector('#settings-modal .space-y-4');
+            if (settingsContent) settingsContent.appendChild(el);
+            return el;
+        }
+
+        function getBackendSettings() {
+            const backendUrl = localStorage.getItem('kindleforge_backend_url') || 'http://localhost:8001';
+            const ollamaModel = localStorage.getItem('kindleforge_ollama_model') || 'llama3.2';
+            return { backendUrl, ollamaModel };
+        }
+
+        async function parseBackendError(resp) {
+            try {
+                const data = await resp.json();
+                if (data.detail) {
+                    return typeof data.detail === 'string' ? data.detail : JSON.stringify(data.detail);
+                }
+                return JSON.stringify(data);
+            } catch (_) {
+                try {
+                    return await resp.text();
+                } catch (__) {
+                    return `HTTP ${resp.status}`;
+                }
+            }
+        }
+
+        async function callLocalGenerateText(instruction) {
+            const { backendUrl, ollamaModel } = getBackendSettings();
+            let resp;
+            try {
+                resp = await fetch(`${backendUrl}/generate-text`, {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify({
+                        prompt: instruction,
+                        model: ollamaModel || 'llama3.2'
+                    })
+                });
+            } catch (e) {
+                throw new Error(
+                    `Cannot reach backend at ${backendUrl}. Run start_backend.bat (Ollama must also be running).`
+                );
+            }
+
+            if (!resp.ok) {
+                throw new Error(await parseBackendError(resp));
+            }
+
+            const data = await resp.json();
+            const text = (data.text || '').trim();
+            if (!text) {
+                throw new Error(data.message || 'Backend returned empty text');
+            }
+            return text;
+        }
+
+        async function callLocalGenerateImage(prompt) {
+            const { backendUrl } = getBackendSettings();
+            let resp;
+            try {
+                resp = await fetch(`${backendUrl}/generate-image`, {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify({ prompt })
+                });
+            } catch (e) {
+                throw new Error(
+                    `Cannot reach backend at ${backendUrl}. Run start_backend.bat.`
+                );
+            }
+
+            if (!resp.ok) {
+                throw new Error(await parseBackendError(resp));
+            }
+
+            const data = await resp.json();
+            if (data.image_base64) {
+                return `data:image/png;base64,${data.image_base64}`;
+            }
+            if (data.image_path) {
+                // Backend serves /generated/* — resolve against backend origin
+                const path = data.image_path.replace(/^\/+/, '');
+                if (path.startsWith('http://') || path.startsWith('https://') || path.startsWith('data:')) {
+                    return path;
+                }
+                return `${backendUrl.replace(/\/$/, '')}/${path}`;
+            }
+            if (data.message) {
+                throw new Error(data.message);
+            }
+            return null;
+        }
+
+        async function callXaiApi(userPrompt) {
+            if (!xaiApiKey) {
+                return null;
+            }
+            
+            const response = await fetch('https://api.x.ai/v1/chat/completions', {
+                method: 'POST',
+                headers: {
+                    'Authorization': `Bearer ${xaiApiKey}`,
+                    'Content-Type': 'application/json'
+                },
+                body: JSON.stringify({
+                    model: 'grok-2-1212',
+                    messages: [
+                        {
+                            role: 'system',
+                            content: 'You are a talented author of warm, whimsical illustrated children\'s books. Write in a gentle, magical style suitable for young readers. Focus on wonder, small acts of courage, and emotional beats. Output only the requested page text.'
+                        },
+                        {
+                            role: 'user',
+                            content: userPrompt
+                        }
+                    ],
+                    max_tokens: 400,
+                    temperature: 0.75
+                })
+            });
+            
+            if (!response.ok) {
+                const err = await response.text();
+                throw new Error('API error: ' + err);
+            }
+            
+            const data = await response.json();
+            return data.choices?.[0]?.message?.content?.trim() || '';
+        }
+        
+        function initializeApp() {
+            initTailwind();
+
+            // Load settings
+            xaiApiKey = localStorage.getItem('xai_api_key') || '';
+            // backendUrl and ollamaModel are read on demand in generate functions
+
+            // Warn if running on file:// (common cause of image fetch failures and relative path issues)
+            if (window.location.protocol === 'file:') {
+                console.warn('%c[KindleForge] Running on file:// protocol. fetch() to local files (like generated/*.jpg) will be blocked by browser CORS policy. Use a local server (python -m http.server) for best results, or use the Upload button to embed images as data URLs.', 'color:orange');
+            }
+            
+            const hasSaved = loadFromLocalStorage();
+            
+            if (!hasSaved || book.pages.length === 0) {
+                createDefaultDemoPages();
+            }
+            
+            // Make sure we have a valid current page
+            if (currentPageIndex >= book.pages.length) currentPageIndex = 0;
+            
+            // Render everything
+            document.getElementById('book-title').value = book.title;
+            document.getElementById('book-author').value = book.author;
+            
+            updateBookHeader();
+            setupStylePresets();
+            renderPageList();
+            renderPreview();
+            renderControls();
+            setupKeyboardShortcuts();
+            
+            // Initial toast
+            setTimeout(() => {
+                if (book.pages.length > 0 && book.pages[0].image) {
+                    // showToast("Demo images included. Click around and try the regen buttons!", 'success');
+                }
+            }, 1200);
+            
+            // Save on unload
+            window.addEventListener('beforeunload', saveToLocalStorage);
+            
+            // Keyboard hint
+            console.log('%c[KindleForge] Arrows flip pages. Ctrl/Cmd+N page. Ctrl/Cmd+S save project. Ctrl/Cmd+O load project.', 'color:#8a7566');
+        }
+        
+        // Boot
+        window.onload = initializeApp;
+    </script>
+</body>
+</html>
