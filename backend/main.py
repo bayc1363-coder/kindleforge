@@ -48,7 +48,7 @@ DEFAULT_WAN_PYTHON = Path(
 DEFAULT_GIT = Path(os.environ.get("WAN_GIT_PATH", r"C:\pinokio\bin\miniconda\Library\bin\git.exe"))
 
 OLLAMA_URL = os.environ.get("OLLAMA_URL", "http://127.0.0.1:11434").rstrip("/")
-DEFAULT_OLLAMA_MODEL = os.environ.get("OLLAMA_MODEL", "llama3.2")
+DEFAULT_OLLAMA_MODEL = os.environ.get("OLLAMA_MODEL", "qwen38-uncensored")
 IMAGE_PROVIDER = os.environ.get("IMAGE_PROVIDER", "auto").lower().strip()
 
 
