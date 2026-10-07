@@ -1,5 +1,18 @@
 # KindleForge
 
+## KDP production CLI
+
+The maintained end-to-end path is now the local Python CLI. It creates
+validated, KDP-sized illustrated or colouring interiors and full-wrap covers:
+see [`docs/MINIPC-SETUP.md`](docs/MINIPC-SETUP.md) for install, discovery,
+mock samples, output paths, and the official KDP formula references.
+
+```bash
+python -m kindleforge.cli doctor
+python -m kindleforge.cli generate --kind illustrated --trim 6x9 --pages 24 --mock --output outputs/illustrated
+python -m kindleforge.cli generate --kind colouring --trim 8.5x11 --pages 24 --mock --output outputs/colouring
+```
+
 AI-powered book creation studio for Kindle (and eventually Amazon KDP print).
 
 Goal: A focused, beautiful tool where you build your book page-by-page (or section-by-section), with powerful AI assistance for both **text** and **illustrations** right next to a live digital-book preview.
