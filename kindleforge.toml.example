@@ -1,0 +1,15 @@
+[ollama]
+url = "http://127.0.0.1:11434"
+# Keep this unset to select the currently resident model automatically.
+model = "qwen38-uncensored"
+
+[image]
+# "auto", "comfyui", "a1111", or "mock"
+backend = "auto"
+comfyui_url = "http://127.0.0.1:8188"
+a1111_url = "http://127.0.0.1:7860"
+# Optional exported ComfyUI API workflow JSON.
+workflow_path = ""
+
+[schedule]
+windows = [["07:30", "09:00"], ["15:00", "18:30"]]

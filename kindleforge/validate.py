@@ -5,7 +5,9 @@ from PIL import Image
 from io import BytesIO
 
 def validate_pdf(path: Path, expected_size: tuple[float, float], bleed: bool,
-                 colouring: bool = False) -> list[str]:
+                 colouring: bool = False, require_artwork: bool = True,
+                 artwork_width_inches: float | None = None,
+                 artwork_height_inches: float | None = None) -> list[str]:
     errors = []
     reader = PdfReader(str(path))
     if not reader.pages:
@@ -16,13 +18,15 @@ def validate_pdf(path: Path, expected_size: tuple[float, float], bleed: bool,
         if actual != expected:
             errors.append(f"page {number}: size {actual}pt, expected {expected}pt")
         images = list(getattr(page, "images", []))
-        if not images:
+        if not images and require_artwork:
             errors.append(f"page {number}: no raster artwork found")
             continue
         for image in images:
             try:
                 im = Image.open(BytesIO(image.data))
-                min_dpi = min(im.width / (expected_size[0] or 1), im.height / (expected_size[1] or 1))
+                displayed_w = artwork_width_inches or expected_size[0]
+                displayed_h = artwork_height_inches or expected_size[1]
+                min_dpi = min(im.width / displayed_w, im.height / (displayed_h or 1))
                 if min_dpi < 300:
                     errors.append(f"page {number}: image resolution below 300 DPI")
                 if colouring:

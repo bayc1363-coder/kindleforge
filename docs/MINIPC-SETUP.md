@@ -17,10 +17,20 @@ $env:CUDA_VISIBLE_DEVICES = ""
 $env:HIP_VISIBLE_DEVICES = ""
 ```
 
-The text model is deliberately not pulled or changed by KindleForge. It only
-discovers Ollama through `/api/tags` and uses the configured model for live
-text generation. Image discovery checks common ComfyUI (8188) and
-A1111/Forge (7860) endpoints, then uses the config/env fallback.
+Copy `kindleforge.toml.example` to `kindleforge.toml` to configure endpoints,
+the optional resident model, an exported ComfyUI API workflow, and Sydney
+schedule windows. Precedence is environment variables, then TOML, then
+auto-detection. The text model is deliberately not pulled or changed:
+KindleForge checks `/api/ps` first and refuses to switch models while another
+is resident. Image discovery checks ComfyUI (8188) and A1111/Forge (7860).
+
+For ComfyUI, export an API-format workflow JSON and set
+`COMFY_WORKFLOW=path\to\workflow.json`; the default workflow expects a
+checkpoint named `model.safetensors`, so an exported workflow is recommended.
+For A1111/Forge, enable its API and make sure `/sdapi/v1/txt2img` is reachable.
+The selected client requests the placed pixel dimensions at 300 DPI. Colouring
+prompts add a line-art constraint and generated images are desaturated,
+thresholded to 1-bit, and lightly despeckled.
 
 ```powershell
 kindleforge doctor
@@ -28,7 +38,15 @@ kindleforge generate --kind illustrated --trim 6x9 --pages 24 --mock --output ou
 kindleforge generate --kind colouring --trim 8.5x11 --pages 24 --mock --output outputs\colouring
 ```
 
-Outputs are `interior.pdf` and `cover.pdf` inside each output directory.
+Live runs (Ollama and an image backend must already be running):
+
+```powershell
+kindleforge doctor
+kindleforge generate --kind illustrated --trim 6x9 --pages 24 --output outputs\illustrated-live
+kindleforge generate --kind colouring --trim 8.5x11 --pages 24 --output outputs\colouring-live
+```
+
+Outputs are `interior.pdf`, `cover.pdf`, and `manifest.json` inside each output directory.
 `--mock` is deterministic and is used by CI; omit it only after wiring the
 local image backend and live text service. Heavy generation is refused during
 07:30–09:00 and 15:00–18:30 Australia/Sydney; pass

@@ -4,6 +4,8 @@ import os, urllib.request, json
 from dataclasses import dataclass
 from pathlib import Path
 from PIL import Image, ImageDraw
+from .config import RuntimeConfig, load_config
+from .clients import OllamaClient, ComfyClient, A1111Client, prepare_line_art
 
 @dataclass
 class Discovery:
@@ -20,13 +22,14 @@ def _get_json(url):
     except Exception:
         return None
 
-def discover() -> Discovery:
-    ollama_url = os.getenv("OLLAMA_URL", "http://127.0.0.1:11434").rstrip("/")
+def discover(config: RuntimeConfig | None = None) -> Discovery:
+    config = config or load_config()
+    ollama_url = config.ollama_url.rstrip("/")
     tags = _get_json(ollama_url + "/api/tags")
     models = [m.get("name", "") for m in (tags or {}).get("models", [])]
     candidates = [
-        ("comfyui", os.getenv("COMFYUI_URL", "http://127.0.0.1:8188") + "/system_stats"),
-        ("a1111", os.getenv("A1111_URL", "http://127.0.0.1:7860") + "/sdapi/v1/options"),
+        ("comfyui", config.comfyui_url.rstrip("/") + "/system_stats"),
+        ("a1111", config.a1111_url.rstrip("/") + "/sdapi/v1/options"),
     ]
     image = next((name for name, url in candidates if _get_json(url) is not None), "mock")
     try:
@@ -58,8 +61,42 @@ def mock_image(path: Path, width: int, height: int, line_art: bool = False, labe
         d.text((width // 2, height - 110), label, fill=ink, anchor="mm")
     image.save(path, dpi=(300, 300))
 
-def generate_text(page: int, title: str, mock: bool = False) -> str:
+def generate_text(page: int, title: str, mock: bool = False, beat: str = "",
+                  config: RuntimeConfig | None = None) -> str:
     if mock:
         return mock_text(page, title)
-    # Generation is intentionally delegated to the configured local Ollama service.
-    raise RuntimeError("Live text generation is provided by the backend; use --mock for offline generation.")
+    text, _ = OllamaClient(config or load_config()).generate(
+        f"Write page {page} of '{title}' in 160-190 words. Page beat: {beat}. "
+        "Output only story prose.",
+        "You are an acclaimed gentle illustrated-book author.")
+    return text
+
+def story_plan(title: str, pages: int, mock: bool, config: RuntimeConfig | None = None):
+    if mock:
+        return {"title": title, "beats": [f"Page {n}: the story advances its gentle wonder." for n in range(1, pages + 1)]}
+    client = OllamaClient(config or load_config())
+    text, model = client.generate(
+        f"Create a concise page-by-page plan for an illustrated book titled '{title}'. "
+        f"Return exactly {pages} lines, one beat per page, no numbering or commentary.",
+        "You are a careful children's book editor.")
+    beats = [line.strip(" -*") for line in text.splitlines() if line.strip()]
+    return {"title": title, "beats": (beats + ["The story continues."] * pages)[:pages], "model": model}
+
+def live_image(prompt: str, output: Path, width: int, height: int, colouring: bool,
+               config: RuntimeConfig | None = None):
+    config = config or load_config()
+    selected = config.image_backend
+    if selected in (None, "auto"):
+        found = discover(config).image_backend
+        selected = found if found != "mock" else "auto"
+    final_prompt = prompt + (", clean black ink line art, white background, no shading, no fills"
+                             if colouring else "")
+    if selected == "comfyui":
+        path = ComfyClient(config).generate(final_prompt, width, height, output)
+    elif selected in ("a1111", "forge"):
+        path = A1111Client(config).generate(final_prompt, width, height, output)
+    else:
+        raise RuntimeError("No live image backend detected. Set IMAGE_PROVIDER or use --mock.")
+    if colouring:
+        prepare_line_art(path)
+    return path, selected
