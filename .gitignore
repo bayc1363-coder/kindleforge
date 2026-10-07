@@ -1,3 +1,5 @@
+*.egg-info/
+outputs/
 generated/
 __pycache__/
 *.py[cod]

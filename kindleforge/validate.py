@@ -26,10 +26,10 @@ def validate_pdf(path: Path, expected_size: tuple[float, float], bleed: bool,
                 if min_dpi < 300:
                     errors.append(f"page {number}: image resolution below 300 DPI")
                 if colouring:
-                    if im.mode not in ("1", "L"):
-                        errors.append(f"page {number}: colouring artwork is not monochrome")
-                    elif im.mode == "L" and len(set(im.getdata())) > 2:
-                        errors.append(f"page {number}: colouring artwork contains greys")
+                    colors = im.convert("RGB").getcolors(maxcolors=3)
+                    if colors is None or any(not (r == g == b and r in (0, 255))
+                                              for _, (r, g, b) in colors):
+                        errors.append(f"page {number}: colouring artwork contains colour or greys")
             except Exception as exc:
                 errors.append(f"page {number}: unreadable artwork ({exc})")
     fonts = []

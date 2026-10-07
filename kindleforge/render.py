@@ -48,6 +48,8 @@ def render_interior(spec: BookSpec, out: Path, image_dir: Path, mock=True) -> Pa
             c.drawImage(ImageReader(str(image)), margin, margin + 0.25*72,
                         iw*72-2*margin, ih*72-2*margin-0.25*72,
                         preserveAspectRatio=True, anchor="c", mask="auto")
+            # Keep a real embedded font resource even on image-only pages.
+            c.setFont(font, 1); c.setFillColor(white); c.drawString(1, 1, " ")
         else:
             image_h = ih * 72 * layout["image_ratio"]
             c.drawImage(ImageReader(str(image)), margin, ih*72-margin-image_h,

@@ -53,3 +53,6 @@ def main():
     args = p.parse_args()
     if args.command == "doctor": doctor()
     else: generate(args)
+
+if __name__ == "__main__":
+    main()
