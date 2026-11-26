@@ -45,5 +45,16 @@
     }));
   }
 
-  return { groupGlyphs };
+  function outlineDrawPlan(strokeWidth) {
+    const width = Number(strokeWidth);
+    if (!Number.isFinite(width) || width <= 0) return null;
+    // CSS -webkit-text-stroke and canvas lineWidth are a centred stroke of this
+    // width. paint-order:stroke fill and canvas strokeText-then-fill cover the
+    // inner half, so the visible halo is the outside half. PDF mode 2 fills
+    // first and strokes on top, which eats the letters. Stroke, then fill,
+    // at this same width.
+    return { lineWidth: width, passes: ['stroke', 'fill'] };
+  }
+
+  return { groupGlyphs, outlineDrawPlan };
 });

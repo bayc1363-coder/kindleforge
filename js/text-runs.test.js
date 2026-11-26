@@ -32,3 +32,12 @@ assert.strictEqual(withGap.map((p) => p.text).join(''), 'self-control.');
 assert.ok(withGap.every((p) => p.text !== 'self-control.' || withGap.length === 1));
 
 console.log('text-runs: hyphen wrap draws each fragment once');
+
+const { outlineDrawPlan } = require('./text-runs');
+const plan = outlineDrawPlan(1.8);
+assert.deepStrictEqual(plan.passes, ['stroke', 'fill']);
+assert.strictEqual(plan.lineWidth, 1.8);
+assert.notStrictEqual(plan.passes[0], 'fill');
+assert.strictEqual(outlineDrawPlan(0), null);
+assert.strictEqual(outlineDrawPlan(54) && outlineDrawPlan(54).lineWidth, 54);
+console.log('text-runs: outline is stroked behind the fill at the on-screen width');

@@ -2050,24 +2050,31 @@
         const y = media.h - toPt(baselineInRect(run));
         const tracking = run.st.tracking * size;
         const drawRun = (xShift, yShift, col, opacity, stroke) => {
-          if (stroke) {
-            pdfPage.pushOperators(
-              PDFLib.setStrokingRgbColor(stroke.r, stroke.g, stroke.b),
-              PDFLib.setLineWidth(run.st.strokeWidth),
-              PDFLib.setTextRenderingMode(PDFLib.TextRenderingMode.FillAndOutline),
-            );
-          }
           const color = PDFLib.rgb(col.r / 255, col.g / 255, col.b / 255);
-          if (Math.abs(tracking) < 0.05) {
-            pdfPage.drawText(run.text, { x: toPt(xPx) + xShift, y: y + yShift, size, font, color, opacity });
-          } else {
+          const show = () => {
+            if (Math.abs(tracking) < 0.05) {
+              pdfPage.drawText(run.text, { x: toPt(xPx) + xShift, y: y + yShift, size, font, color, opacity });
+              return;
+            }
             let cx = toPt(xPx) + xShift;
             for (const ch of run.text) {
               pdfPage.drawText(ch, { x: cx, y: y + yShift, size, font, color, opacity });
               cx += font.widthOfTextAtSize(ch, size) + tracking;
             }
+          };
+          const plan = stroke ? KFText.outlineDrawPlan(run.st.strokeWidth) : null;
+          if (plan) {
+            pdfPage.pushOperators(
+              PDFLib.setStrokingRgbColor(stroke.r, stroke.g, stroke.b),
+              PDFLib.setLineWidth(plan.lineWidth),
+              PDFLib.setLineJoin(PDFLib.LineJoinStyle.Round),
+              PDFLib.setLineCap(PDFLib.LineCapStyle.Round),
+              PDFLib.setTextRenderingMode(PDFLib.TextRenderingMode.Outline),
+            );
+            show();
+            pdfPage.pushOperators(PDFLib.setTextRenderingMode(PDFLib.TextRenderingMode.Fill));
           }
-          if (stroke) pdfPage.pushOperators(PDFLib.setTextRenderingMode(PDFLib.TextRenderingMode.Fill));
+          show();
         };
         for (const layer of shadowLayers(run.st)) {
           drawRun(layer.dx, -layer.dy, hexToRgb(run.st.shadowColor), layer.op, null);
@@ -2215,6 +2222,7 @@
         ctx.font = `${run.italic ? 'italic' : 'normal'} ${run.bold ? 700 : 400} ${fontPx}px ${css}`;
         ctx.textBaseline = 'alphabetic';
         ctx.lineJoin = 'round';
+        ctx.lineCap = 'round';
         const baseline = baselineInRect(run);
         const paint = (dx, dy, fill, stroke) => {
           const tracking = run.st.tracking * fontPx;
