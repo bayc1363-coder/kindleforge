@@ -1,168 +1,75 @@
 # KindleForge
 
-AI-powered book creation studio for Kindle (and eventually Amazon KDP print).
+A local book studio for Kindle and KDP. Picture books (ages 2–5) keep the illustration locked and put the words in an editable layer on top. Classic text-and-picture layouts are still there.
 
-Goal: A focused, beautiful tool where you build your book page-by-page (or section-by-section), with powerful AI assistance for both **text** and **illustrations** right next to a live digital-book preview.
+No build step, no API key, and no upload to Amazon. Open it with a local server so fonts, pictures, and export can read local files:
 
-## Current Status (v0.3 - Portable projects + local gen)
+```bash
+python -m http.server 8000
+```
 
-- Single-file web app (`index.html`) — best run via local server (see below).
-- Full UI: Page list (left) • Live Kindle-like preview (center) • Per-page Text + Illustration AI boxes (right) with **Grok Request Panel** for seamless chat-assisted or direct local generation.
-- Real **EPUB export** — produces a valid .epub with embedded text and images (portable via data URLs or Make Portable).
-- **Save Project / Load Project** — download a portable `.kindleforge.json` (book + embedded images) and reopen it later or on another PC. Keyboard: `Ctrl+S` / `Ctrl+O`.
-- Browser **localStorage** still auto-saves the last book on the same machine/browser.
-- **Local model support (no xAI key required)**: Run the small FastAPI backend (like your beatreel setup). 
-  - Text: Calls your local Ollama (llama3.2 etc.) — Generate button now **populates the page directly**.
-  - Illustrations: Stub ready for your local model (ComfyUI/Flux/SD/Wan etc.) — same "populate on page" flow once wired.
-- "Embed Demo Images" + drag/upload for bringing generated images in.
-- "Make Portable" + improved image handling.
-- Clear step-by-step instructions under buttons so the flow is obvious.
+Then open http://127.0.0.1:8000/
 
-**This is now functioning for creating real Kindle books.**
+## Picture books
 
-## Important: Testing EPUB Export
+A picture page is one full-bleed illustration. A **spread** is one wide picture (for example 1376×768) across a left page and a right page. Text boxes sit anywhere on top. Moving or restyling the words does not change the picture file.
 
-The EPUB export uses browser tech (fetch for images, JSZip). 
+1. **Spread** or **Picture** in the page strip adds a page. **Import → Folder of images** makes one page per file, in filename order. A wide picture becomes a spread.
+2. Drop one image on the canvas to set that page’s background. The stored file is never cropped. **Cover** fills the page; **Contain** shows the whole picture. Scale and the two sliders only change how it sits.
+3. **Add text**, then drag the box (use the Drag pill or the padding). Corner and edge handles resize it. Arrow keys nudge; Shift is a bigger step, Alt is a hair. Snap pulls a box to the trim, the safe area, the centre, and other boxes. Hold Alt while dragging to ignore snap.
+4. Type in the box or in **Words** on the right. They stay in sync. `**Whoosh!**` is bold, `*soft*` is italic. You can also select a word and press **B** or **I**.
+5. **Text style** is per box: any point size, Nunito, Baloo 2, or Andika (bundled, so they work offline), colour, bold, italic, alignment, line spacing, letter spacing.
+   - **Outline**, **Soft shadow**, and **Panel behind text** each have their own on/off switch, plus width, colour, opacity, corner radius, and padding. A cream rounded panel is the usual read-aloud look.
+6. **Save this style** stores a named preset in the project. **Apply** puts it on the selected box. **Apply to every text box** copies the look across the book and leaves positions and words alone.
+7. **Trim** defaults to the KDP square, 8.5 × 8.5 in, with 0.125 in bleed and a 0.5 in safe area. The dashed line is the trim. The green line is the safe area. Other trims, including a custom size, stay in the menu. **Fit** and the zoom slider frame the canvas. The page strip collapses with the arrow at its top.
+8. The sun/moon button switches light and dark. Undo is Ctrl+Z, redo is Ctrl+Shift+Z or Ctrl+Y.
 
-**Best experience:**
-- Open `index.html` 
-- Click **"Make Portable"** first (this tries to convert demo images to embedded data).
-- Then **Export EPUB**.
+**Import → Paste manuscript** splits a draft into pages. Headings like `### Pages 10–11 — Joy` followed by a `**Text:**` block work, and so does a line that is only `---`. **Fill existing pages** writes each chunk into the first text box, in order. **Add pages for the rest** creates picture pages when there are more chunks than pages.
 
-**If images are missing in the EPUB:**
-- This is very common when double-clicking the HTML (file:// protocol blocks fetch).
-- Solutions:
-  1. For any page with a missing image, use the **Upload** button or drag a copy of the image from the `generated/` folder onto the illustration preview area. This stores it as a portable data URL.
-  2. Run a local server for best results:
-     - In the `kindleforge` folder, open PowerShell/Terminal and run:
-       `python -m http.server 8000`
-     - Then open http://localhost:8000/index.html in your browser.
-  3. Re-export after making images portable.
+The sample project is `demo/wide-awake-kip-sample.kindleforge.json` (Wide-Awake Kip, three spreads). **More → Load picture-book demo**, or open `index.html#picture-demo`. The pictures live in `demo/spreads/`.
 
-Test the resulting .epub with Amazon's free **Kindle Previewer** tool (highly recommended for validation).
+## Export
 
-## Vision / What You're Seeing
+| Export | What you get |
+| --- | --- |
+| Print PDF | One page per physical page, at trim + bleed. A spread becomes two pages and repeats a bleed-wide strip at the gutter. The original image is embedded. Text is vector, in the same fonts as the screen. |
+| Pages as PNG / JPG | A zip of those print pages at 200 DPI, for a phone or a markup pass. |
+| Tall review JPG | The same pages stacked in one image. |
+| EPUB | A book that is only picture pages and spreads is a fixed-layout EPUB. Mixed books keep the older reflowable EPUB for classic pages. |
+| HTML | A simple preview next to this folder. |
 
-- A clean e-reader-like page in the center.
-- For the selected page you have:
-  - **Text AI box**: Prompt field + Generate / Regenerate button. Edit the final text.
-  - **Illustration AI box**: Prompt + style controls + Generate / Variations / Regenerate. The image appears naturally in the book page preview.
-- The preview feels like the final Kindle experience (serif typography, proper margins, page-like container).
+Nothing here uploads to KDP. Open the PDF in a viewer and check the trim box before you send it anywhere.
 
-## Phased Build Plan (we start simple, add depth)
+## Project file
 
-1. **Prototype (current)**: Beautiful interactive UI mock that feels real. Local persistence. Dummy generation (you describe prompts here in chat → I generate real text/images and you paste or I help integrate).
+**Save** downloads a `.kindleforge.json`. **Load** opens one, including older KindleForge files. Ctrl+S and Ctrl+O do the same. The file has a `guide` object that describes the fields. In short:
 
-2. **Interactivity + Polish**: Full editing, drag reorder, chapter support, better preview (page turn feel, zoom, reading mode).
+- `book.trim` is the trim, bleed, and safe inset in inches.
+- A picture or spread page stores the background in `images[0].src`. `bgFit`, `bgScale`, `bgX`, and `bgY` are view-only.
+- `texts[]` boxes use `x`, `y`, `w`, `h` as percentages of the full-bleed canvas. On a spread that canvas is both pages, including the outer bleeds, and the gutter is the exact centre.
+- `sizePt` is the type size in points. `strokeOn`, `shadowOn`, and `panelOn` are the three switches.
+- `stylePresets` are the named looks saved in that project.
 
-3. **Real EPUB Export**: Proper .epub file you can send straight to Kindle or upload to KDP.
+**Save** (Ctrl+S) asks once where the project file should go, then overwrites that same file. **More → Save as…** writes a new one. Chrome and Edge on localhost can do this; other browsers download a file instead. The status next to Save says **Saved hh:mm** or **Unsaved changes**. A changed book is also written to that file about every two minutes and when you change pages. Pictures are stored once, in their original bytes. A recovery copy stays in this browser, and the last error is shown again if the tab has to reload.
 
-4. **AI Integration**:
-   - Text: Connect to Grok / xAI (or other) for one-click generation with context of previous pages.
-   - Images: One-click illustration generation with style consistency across the book (character sheets, art direction).
+## What is bundled
 
-5. **Advanced Features**:
-   - Cover designer
-   - Full book metadata for Amazon
-   - Consistency tools (character bible, tone checker)
-   - Multiple illustration slots per page
-   - Print layout (for paperback/hardcover)
-   - Version history per page
-   - Batch generation
+- `vendor/pdf-lib.min.js` and `vendor/fontkit.umd.min.js` for the print PDF
+- `vendor/jszip.min.js` for EPUB and the image zip
+- `vendor/fonts/` — Nunito, Baloo 2, and Andika, SIL Open Font License (see `vendor/fonts/OFL-*.txt`)
 
-6. **Packaging & Distribution**:
-   - Easy local run (Pinokio launcher, Tauri desktop app, or `python -m http.server`)
-   - Optional backend for heavier generation / storage
-   - One-click "Publish prep" checklist for Amazon
+Baloo 2 is shipped as regular and bold only. Italic on that family is simulated on screen and stays upright in the PDF. The soft shadow is a small stack of offset copies, on screen and in the PDF, so the print matches the preview.
 
-## How to Use Right Now (with Local Generation)
+## Classic pages and the local backend
 
-**Recommended setup (like beatreel - no external API keys):**
+Text only, image + text, side by side, panels, and Custom (drag up to three pictures and three text boxes) still load and still export to EPUB. **More → Load classic fox demo** restores the original sample.
 
-0. **One-click (Windows):** double-click `start_kindleforge.bat` (starts backend + frontend + browser).
+**Settings** can point Generate at the optional FastAPI backend (`backend/`, port 8001) and a local Ollama model. Picture-book layout does not need it. There is no xAI key in the app.
 
-1. **Backend for local models**:
-   - Or: `backend\start_backend.bat` (uses venv, port 8001)
-   - Ollama must be running with a model: `ollama pull llama3.2`
-   - Health check: http://127.0.0.1:8001/health (`ollama_ok` should be true)
+## Layout of the repo
 
-2. **Frontend**:
-   - In the `kindleforge` folder: `python -m http.server 8000`
-   - Open http://127.0.0.1:8000/index.html (**not** file://)
-
-3. In the app:
-   - **Settings** (cog) — Backend URL `http://127.0.0.1:8001`, Ollama Model `llama3.2` → **Test Backend**
-   - Click **GENERATE** on Text → Ollama fills the page (first call can take ~1–2 min).
-   - Click **GENERATE** on Illustration → places an image (placeholder by default until Flux/Comfy on 7900 XTX).
-   - Edit, **Save Project**, Export EPUB.
-
-**Without backend** (still works great):
-- Use the in-app **Grok Request Panel** (appears under buttons).
-- Click Generate → copy prompt from panel → paste here in chat → I generate (real content, including images via my tools) → paste back in the panel → Apply.
-- This is fully "in the app" with minimal friction, no keys needed.
-
-See backend/README.md for details on wiring your local image models.
-
-## Roadmap — We go one by one (functioning first, then polish)
-
-You said: get it functioning properly first, then tweak to perfection. All steps, I pick the order.
-
-**Current phase goal:** A working tool you can use end-to-end to produce real Kindle books with my help.
-
-**Picked starting point (just completed):**
-- Step 1: Robust image handling (upload/drag-drop + data URLs) + **Real EPUB export** (with JSZip, proper structure, image embedding, metadata). 
-  Result: You can now create pages, get content/illustrations via chat, bring images in, and export a real .epub that works on Kindle.
-
-**Done:**
-- Project file import/export — **Save Project** / **Load Project** (`.kindleforge.json`, portable with embedded images).
-
-**Next logical steps (we'll do one at a time, you approve before moving):**
-
-2. Improve AI generation workflow inside the app (better auto-prompts that include previous pages for consistency, "Send to Grok" helper that logs the request, one-click "Use last response", etc.)
-3. Recent-projects list / named sessions in the UI (optional; files already work for multi-book).
-4. Smoother image workflow + config-driven image provider ready for 7900 XTX (ComfyUI / Flux / etc.).
-5. Better preview fidelity (more accurate Kindle typography, page size simulation, reading mode, zoom).
-6. Add basic book metadata editor for Amazon KDP (description, categories, etc.).
-7. Move beyond single-file (Vite + proper frontend + optional small backend for local API calls if you want one-click generation with your keys).
-8. Packaging (easy launcher, Pinokio, desktop app via Tauri, etc.).
-9. Advanced (style consistency tools, character bible, batch regen, print layouts, cover generator...).
-
-Tell me when you're ready for Step 2, or if you want to change the order. Test the EPUB export on the current demo first!
-
-Let's build this step by step exactly how you want it.
-
-## Target hardware & PC move (important)
-
-**Tomorrow:** moving KindleForge to a new PC with an **AMD Radeon RX 7900 XTX** (~24GB VRAM).
-
-Build decisions today should assume that environment, not lock us into the current NVIDIA / Beatreel-on-3070 setup.
-
-| Concern | How we handle it |
-|--------|-------------------|
-| **AMD, not CUDA** | Image backends via **config** (env + Settings), not hardcoded `C:\pinokio\...` or CUDA-only paths. Prefer ComfyUI / Ollama / abstract “image provider” so ROCm, DirectML, or ZLUDA can plug in on the new box. |
-| **24GB VRAM** | Design for **bigger models**: Flux (dev/schnell), SDXL, larger Ollama (7B–32B+), style-consistency models. Keep model **names/IDs and size presets** configurable — don’t bake in 1.3B-only defaults as the only path. |
-| **Portable projects** | Prefer **file-based save/load** (JSON books + assets) over browser-only localStorage so work survives the PC move. |
-| **No machine-specific hardcodes** | Paths, ports, model IDs, and GPU device go in `.env` / Settings UI. Repo should clone and run with a short setup checklist. |
-| **Backend as the heavy layer** | Frontend stays thin; FastAPI owns generation so we can swap Ollama + Comfy/Wan/Flux without rewriting the UI. |
-
-Current machine can still use smaller models / chat fallback; the **architecture** is what has to be 7900-ready.
-
-### Migration checklist (for the new PC)
-1. On this PC: open KindleForge → **Save Project** (or `Ctrl+S`). Prefer running via `python -m http.server` first so relative images embed as data URLs.
-2. Copy the downloaded `*.kindleforge.json` (and optionally the whole `kindleforge` folder) to the new PC.
-3. Install: Python, Ollama (pull preferred text model), ComfyUI or chosen image stack for AMD 24GB.
-4. Open frontend → **Load Project** (or `Ctrl+O`) → pick the `.kindleforge.json` → continue the book.
-5. Set Settings: backend URL, Ollama model, image provider + model (when wired).
-
-## Tech Notes
-
-- v0.1: Pure HTML + Tailwind CDN + vanilla JS (zero install, instant to try).
-- Later: Can evolve into the same stack as beatreel (Vite + TSX frontend + FastAPI) or Tauri for a real desktop app.
-- Images live in `/generated` (we'll populate real AI images here).
-- Image gen currently has Beatreel/Wan-style defaults — treat as **one provider**, not the forever stack.
-
-## Amazon KDP Ready
-
-The end goal is files + metadata that pass Amazon review easily (EPUB for Kindle, proper interiors for print, good cover, clean metadata).
-
-Let's get the core creative loop feeling great first.
+- `index.html` — the app shell
+- `css/app.css` — the interface
+- `js/app.js` — editing, import, and export
+- `demo/` — the Kip sample and its spreads
+- `backend/` — optional local text and image generation

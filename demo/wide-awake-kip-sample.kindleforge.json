@@ -1,0 +1,130 @@
+{
+  "format": "kindleforge-project",
+  "version": 2,
+  "guide": {
+    "summary": "KindleForge book. Pictures are stored whole. Text is a separate layer.",
+    "trim": "widthIn and heightIn are the trim in inches. bleedIn (usually 0.125) sits outside the trim. safetyIn (usually 0.5) is the green guide, inset from the trim, where words should stay.",
+    "canvas": "On a picture page, texts[].x/y/w/h are percentages of the full-bleed page (trim + bleed on every side). On a spread they are percentages of the whole spread, including both outer bleeds. The gutter is the exact centre.",
+    "images": "images[0].src is the background. It is never cropped in the file. bgFit is cover or contain. bgScale, bgX and bgY only change how the picture sits.",
+    "text": "sizePt is the type size in print points. **double asterisks** make a word bold and *single asterisks* make a word italic. strokeOn, shadowOn and panelOn switch the outline, shadow and panel.",
+    "spreads": "Print export splits a spread into two pages and repeats a bleed-wide strip across the gutter so the picture still meets after binding."
+  },
+  "savedAt": "2026-11-23T00:00:00.000Z",
+  "currentPageIndex": 0,
+  "book": {
+    "title": "Wide-Awake Kip and the Christmas Fruit",
+    "author": "Picture-book sample",
+    "bookStyleNotes": "Read-aloud picture book, ages 2–5. Short lines over a locked illustration. Do not bake lettering into the art.",
+    "trim": { "preset": "kdp-8.5", "widthIn": 8.5, "heightIn": 8.5, "bleedIn": 0.125, "safetyIn": 0.5 },
+    "stylePresets": [
+      {
+        "name": "Kip story band",
+        "style": {
+          "font": "nunito", "size": "custom", "sizePt": 18, "align": "center", "weight": "normal", "style": "normal",
+          "leading": 1.28, "tracking": 0, "color": "#2a2118",
+          "strokeOn": false, "strokeWidth": 2, "strokeColor": "#fffaf3",
+          "shadowOn": false, "shadowX": 0, "shadowY": 1.5, "shadowBlur": 1.2, "shadowColor": "#1c140e", "shadowOpacity": 0.35,
+          "panelOn": true, "panelColor": "#fbf6ec", "panelOpacity": 0.94, "panelRadius": 16, "panelPad": 12
+        }
+      }
+    ],
+    "pages": [
+      {
+        "id": 1011,
+        "title": "10–11 · Joy",
+        "pageStart": 10,
+        "layout": "spread",
+        "bgFit": "cover",
+        "bgScale": 1,
+        "bgX": 50,
+        "bgY": 50,
+        "textPrompt": "",
+        "images": [{ "src": "demo/spreads/10-11-joy.jpg", "prompt": "Carols by candlelight under summer stars" }],
+        "texts": [
+          {
+            "content": "Joy",
+            "x": 20, "y": 3.5, "w": 18, "h": 12,
+            "font": "baloo", "size": "custom", "sizePt": 36, "align": "center", "weight": "bold", "style": "normal",
+            "leading": 1, "tracking": 0.01, "color": "#fffaf3",
+            "strokeOn": true, "strokeWidth": 2.2, "strokeColor": "#5a3418",
+            "shadowOn": false, "shadowX": 0, "shadowY": 1.5, "shadowBlur": 1, "shadowColor": "#1c140e", "shadowOpacity": 0.4,
+            "panelOn": false, "panelColor": "#fbf6ec", "panelOpacity": 0.9, "panelRadius": 12, "panelPad": 4
+          },
+          {
+            "content": "Candles wink under the summer stars.\nKip **sings** out, and his friends sing too. The night shines.\nJesus helps the good fruit grow.",
+            "x": 54, "y": 74, "w": 40, "h": 20,
+            "font": "nunito", "size": "custom", "sizePt": 16, "align": "center", "weight": "normal", "style": "normal",
+            "leading": 1.3, "tracking": 0, "color": "#2a2118",
+            "strokeOn": false, "strokeWidth": 1.5, "strokeColor": "#fffaf3",
+            "shadowOn": false, "shadowX": 0, "shadowY": 1.5, "shadowBlur": 1.2, "shadowColor": "#1c140e", "shadowOpacity": 0.35,
+            "panelOn": true, "panelColor": "#fbf6ec", "panelOpacity": 0.94, "panelRadius": 16, "panelPad": 12
+          }
+        ]
+      },
+      {
+        "id": 1617,
+        "title": "16–17 · Kindness",
+        "pageStart": 16,
+        "layout": "spread",
+        "bgFit": "cover",
+        "bgScale": 1,
+        "bgX": 50,
+        "bgY": 50,
+        "textPrompt": "",
+        "images": [{ "src": "demo/spreads/16-17-kindness.jpg", "prompt": "Kip walks Mrs Prickles into the shade" }],
+        "texts": [
+          {
+            "content": "Kindness",
+            "x": 6, "y": 6, "w": 28, "h": 12,
+            "font": "baloo", "size": "custom", "sizePt": 32, "align": "center", "weight": "bold", "style": "normal",
+            "leading": 1, "tracking": 0, "color": "#fffaf3",
+            "strokeOn": false, "strokeWidth": 2, "strokeColor": "#3a2418",
+            "shadowOn": true, "shadowX": 0, "shadowY": 2, "shadowBlur": 1.4, "shadowColor": "#3a2418", "shadowOpacity": 0.45,
+            "panelOn": false, "panelColor": "#fbf6ec", "panelOpacity": 0.9, "panelRadius": 10, "panelPad": 4
+          },
+          {
+            "content": "Mrs. Prickles is hot and cross on the path.\nKip helps her into the shade. Her frown grows soft.\nJesus helps the good fruit grow.",
+            "x": 8, "y": 76, "w": 40, "h": 18,
+            "font": "nunito", "size": "custom", "sizePt": 16, "align": "center", "weight": "normal", "style": "normal",
+            "leading": 1.3, "tracking": 0, "color": "#2a2118",
+            "strokeOn": false, "strokeWidth": 1.5, "strokeColor": "#fffaf3",
+            "shadowOn": false, "shadowX": 0, "shadowY": 1.5, "shadowBlur": 1.2, "shadowColor": "#1c140e", "shadowOpacity": 0.35,
+            "panelOn": true, "panelColor": "#fbf6ec", "panelOpacity": 0.94, "panelRadius": 16, "panelPad": 12
+          }
+        ]
+      },
+      {
+        "id": 2003,
+        "title": "Book 2 · spread 03",
+        "pageStart": 2,
+        "layout": "spread",
+        "bgFit": "cover",
+        "bgScale": 1,
+        "bgX": 50,
+        "bgY": 45,
+        "textPrompt": "",
+        "images": [{ "src": "demo/spreads/book2-03.jpg", "prompt": "Joey bounds past the gums while Kip watches from a branch" }],
+        "texts": [
+          {
+            "content": "**Whoosh!**",
+            "x": 5, "y": 30, "w": 28, "h": 14,
+            "font": "baloo", "size": "custom", "sizePt": 40, "align": "center", "weight": "bold", "style": "normal",
+            "leading": 1, "tracking": 0.02, "color": "#fffaf3",
+            "strokeOn": true, "strokeWidth": 2.6, "strokeColor": "#3a2418",
+            "shadowOn": false, "shadowX": 0, "shadowY": 2, "shadowBlur": 1, "shadowColor": "#1c140e", "shadowOpacity": 0.4,
+            "panelOn": false, "panelColor": "#fbf6ec", "panelOpacity": 0.9, "panelRadius": 8, "panelPad": 2
+          },
+          {
+            "content": "Joey bounds past the gums.",
+            "x": 6, "y": 74, "w": 34, "h": 14,
+            "font": "andika", "size": "custom", "sizePt": 18, "align": "center", "weight": "normal", "style": "normal",
+            "leading": 1.2, "tracking": 0, "color": "#2a2118",
+            "strokeOn": false, "strokeWidth": 1.5, "strokeColor": "#fffaf3",
+            "shadowOn": false, "shadowX": 0, "shadowY": 1.5, "shadowBlur": 1, "shadowColor": "#1c140e", "shadowOpacity": 0.35,
+            "panelOn": true, "panelColor": "#fbf6ec", "panelOpacity": 0.94, "panelRadius": 16, "panelPad": 10
+          }
+        ]
+      }
+    ]
+  }
+}
