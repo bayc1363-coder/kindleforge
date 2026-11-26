@@ -112,7 +112,7 @@
   let saveTimer = null;
   let historyTimer = null;
   let pendingFiles = null;
-  const history = { stack: [], index: -1, lock: false, pool: [] };
+  const history = { stack: [], index: -1, lock: false };
   const measureCanvas = document.createElement('canvas').getContext('2d');
 
   function clamp(n, lo, hi) { return Math.max(lo, Math.min(hi, n)); }
@@ -431,24 +431,322 @@
     setTimeout(() => el.remove(), 3200);
   }
 
+  function showBanner(message, kind) {
+    const el = $('app-banner');
+    if (!el) { showToast(message); return; }
+    el.classList.remove('hidden', 'error');
+    if (kind === 'error') el.classList.add('error');
+    $('app-banner-text').textContent = message;
+  }
+  function hideBanner() {
+    const el = $('app-banner');
+    if (el) el.classList.add('hidden');
+  }
+
+  /* Pictures live here as Blobs, never as multi-megabyte strings in the book,
+     the undo stack, or localStorage. The book stores "asset:N". */
+  const AUTOSAVE_JSON_LIMIT = 4_500_000;
+  const BIG_BOOK_BYTES = 2_000_000;
+  const PREVIEW_MAX = 2000;
+  const THUMB_MAX = 180;
+  const imageStore = { items: new Map(), next: 1, bigNoted: false, total: 0 };
+
+  function isAssetId(src) {
+    return typeof src === 'string' && src.startsWith('asset:');
+  }
+  function assetOf(src) {
+    return isAssetId(src) ? imageStore.items.get(src) : null;
+  }
+  function noteBigBook() {
+    if (imageStore.bigNoted || imageStore.total < BIG_BOOK_BYTES) return;
+    imageStore.bigNoted = true;
+    showBanner('This book is too big for the browser’s quick autosave (that store only holds a few megabytes). The pictures stay in this browser so a refresh can find them. Use Save Project for one file you can move to another computer.');
+  }
+  function dataUrlToBlob(dataUrl) {
+    const comma = dataUrl.indexOf(',');
+    const header = dataUrl.slice(0, comma);
+    const mime = (header.match(/^data:([^;,]+)/) || [])[1] || 'application/octet-stream';
+    const b64 = dataUrl.slice(comma + 1);
+    const binary = atob(b64);
+    const bytes = new Uint8Array(binary.length);
+    for (let i = 0; i < binary.length; i++) bytes[i] = binary.charCodeAt(i);
+    return new Blob([bytes], { type: mime });
+  }
+  function putBlob(blob, mime) {
+    const id = 'asset:' + (imageStore.next++);
+    const type = mime || blob.type || 'image/png';
+    imageStore.items.set(id, { blob, mime: type, stored: false });
+    imageStore.total += blob.size || 0;
+    if (imageStore.total >= BIG_BOOK_BYTES) noteBigBook();
+    return id;
+  }
+  function ingestSrc(src) {
+    if (!src || typeof src !== 'string') return src || '';
+    if (isAssetId(src) || src.startsWith('blob:') || !src.startsWith('data:')) return src;
+    if (src.length < 20000) return src;
+    try {
+      return putBlob(dataUrlToBlob(src));
+    } catch (e) {
+      console.warn('Could not unpack a picture', e);
+      return src;
+    }
+  }
+  async function ingestBookImages(bookLike, onProgress) {
+    const pages = bookLike?.pages || [];
+    const jobs = [];
+    pages.forEach((p, pi) => {
+      (p.images || []).forEach((im, ii) => {
+        if (im && typeof im.src === 'string' && im.src.startsWith('data:') && im.src.length >= 20000) {
+          jobs.push({ p, im, pi, ii });
+        }
+      });
+      if (typeof p.image === 'string' && p.image.startsWith('data:') && p.image.length >= 20000) {
+        const already = (p.images || []).some((im) => im && im.src === p.image);
+        if (!already && !(p.images?.[0] && isAssetId(p.images[0].src))) jobs.push({ p, field: 'image', pi });
+      }
+    });
+    for (let n = 0; n < jobs.length; n++) {
+      const job = jobs[n];
+      if (onProgress) onProgress(n + 1, jobs.length);
+      const source = job.im ? job.im.src : job.p.image;
+      const id = ingestSrc(source);
+      if (job.im) {
+        const previous = job.im.src;
+        job.im.src = id;
+        if (job.p.image === previous || job.p.image === source) job.p.image = id;
+      } else {
+        job.p.image = id;
+        if (job.p.images?.[0] && !job.p.images[0].src) job.p.images[0].src = id;
+      }
+      await new Promise((r) => setTimeout(r, 0));
+    }
+  }
+  function blobPixelSize(bytes) {
+    if (bytes.length >= 24 && bytes[0] === 0x89 && bytes[1] === 0x50) {
+      const view = new DataView(bytes.buffer, bytes.byteOffset, bytes.byteLength);
+      return { w: view.getUint32(16), h: view.getUint32(20) };
+    }
+    if (bytes[0] === 0xff && bytes[1] === 0xd8) {
+      let i = 2;
+      while (i + 8 < bytes.length) {
+        if (bytes[i] !== 0xff) { i += 1; continue; }
+        const marker = bytes[i + 1];
+        const size = (bytes[i + 2] << 8) | bytes[i + 3];
+        if (marker >= 0xc0 && marker <= 0xc3) {
+          return { h: (bytes[i + 5] << 8) | bytes[i + 6], w: (bytes[i + 7] << 8) | bytes[i + 8] };
+        }
+        if (!size) break;
+        i += 2 + size;
+      }
+    }
+    return null;
+  }
+  async function pixelSizeOfBlob(blob) {
+    const head = new Uint8Array(await blob.slice(0, 128 * 1024).arrayBuffer());
+    return blobPixelSize(head);
+  }
+  async function ensureScaled(id, kind) {
+    const item = assetOf(id);
+    if (!item) return '';
+    const key = kind === 'thumb' ? 'thumbUrl' : 'previewUrl';
+    if (item[key]) return item[key];
+    if (item.pending && item.pending[kind]) return item.pending[kind];
+    item.pending = item.pending || {};
+    item.pending[kind] = (async () => {
+      const maxEdge = kind === 'thumb' ? THUMB_MAX : PREVIEW_MAX;
+      const size = item.size || await pixelSizeOfBlob(item.blob);
+      item.size = size;
+      let bmp;
+      if (size && Math.max(size.w, size.h) > maxEdge) {
+        const scale = maxEdge / Math.max(size.w, size.h);
+        const w = Math.max(1, Math.round(size.w * scale));
+        const h = Math.max(1, Math.round(size.h * scale));
+        bmp = await createImageBitmap(item.blob, { resizeWidth: w, resizeHeight: h, resizeQuality: 'medium' });
+      } else {
+        bmp = await createImageBitmap(item.blob);
+      }
+      const canvas = document.createElement('canvas');
+      canvas.width = bmp.width;
+      canvas.height = bmp.height;
+      canvas.getContext('2d').drawImage(bmp, 0, 0);
+      bmp.close();
+      const blob = await new Promise((resolve) => canvas.toBlob(resolve, 'image/jpeg', kind === 'thumb' ? 0.72 : 0.86));
+      const url = URL.createObjectURL(blob || item.blob);
+      item[key] = url;
+      delete item.pending[kind];
+      return url;
+    })();
+    try {
+      return await item.pending[kind];
+    } catch (e) {
+      delete item.pending[kind];
+      console.warn(e);
+      try {
+        const full = await createImageBitmap(item.blob);
+        const maxEdge = kind === 'thumb' ? THUMB_MAX : PREVIEW_MAX;
+        const scale = Math.min(1, maxEdge / Math.max(full.width, full.height));
+        const canvas = document.createElement('canvas');
+        canvas.width = Math.max(1, Math.round(full.width * scale));
+        canvas.height = Math.max(1, Math.round(full.height * scale));
+        canvas.getContext('2d').drawImage(full, 0, 0, canvas.width, canvas.height);
+        full.close();
+        const blob = await new Promise((resolve) => canvas.toBlob(resolve, 'image/jpeg', 0.8));
+        const url = URL.createObjectURL(blob);
+        item[key] = url;
+        return url;
+      } catch (err) {
+        console.warn(err);
+        return '';
+      }
+    }
+  }
+  function viewUrl(src, kind) {
+    if (!src) return '';
+    if (!isAssetId(src)) return src;
+    const item = assetOf(src);
+    if (!item) return '';
+    if (kind === 'thumb') return item.thumbUrl || '';
+    if (kind === 'preview') return item.previewUrl || '';
+    if (!item.fullUrl) item.fullUrl = URL.createObjectURL(item.blob);
+    return item.fullUrl;
+  }
+  function releasePreview(exceptId) {
+    imageStore.items.forEach((item, id) => {
+      if (id !== exceptId && item.previewUrl) {
+        URL.revokeObjectURL(item.previewUrl);
+        item.previewUrl = '';
+      }
+    });
+  }
+  let thumbQueue = Promise.resolve();
+  let thumbPass = false;
+  let thumbAgain = false;
+  function queueThumbs() {
+    if (thumbPass) { thumbAgain = true; return; }
+    thumbPass = true;
+    thumbQueue = thumbQueue.then(async () => {
+      do {
+        thumbAgain = false;
+        const current = currentPage()?.images?.[0]?.src;
+        if (isAssetId(current) && !assetOf(current)?.previewUrl) {
+          await ensureScaled(current, 'preview');
+          paintCurrentPreview();
+        }
+        const ids = [];
+        book.pages.forEach((p) => {
+          const src = p.images?.[0]?.src;
+          if (isAssetId(src) && !assetOf(src)?.thumbUrl) ids.push(src);
+        });
+        for (const id of ids) {
+          await ensureScaled(id, 'thumb');
+          paintThumbs(id);
+          await new Promise((r) => setTimeout(r, 0));
+        }
+      } while (thumbAgain);
+      thumbPass = false;
+    }).catch((e) => { thumbPass = false; console.warn('preview', e); });
+  }
+  function paintCurrentPreview() {
+    const page = currentPage();
+    const src = page?.images?.[0]?.src || '';
+    const url = viewUrl(src, 'preview');
+    const img = document.querySelector('#book-preview .sheet-img');
+    if (img && url && img.getAttribute('src') !== url) {
+      img.src = url;
+      img.addEventListener('load', () => {
+        const sheet = img.closest('.sheet-outer');
+        if (sheet) layoutSheetImage(sheet, page);
+      }, { once: true });
+    }
+    const side = $('bg-thumb');
+    if (side && url) {
+      side.src = url;
+      side.style.display = 'block';
+      const empty = $('bg-empty');
+      if (empty) empty.style.display = 'none';
+    }
+  }
+  function paintThumbs(id) {
+    const url = viewUrl(id, 'thumb');
+    if (!url) return;
+    document.querySelectorAll(`.thumb-art[data-asset="${id}"]`).forEach((el) => {
+      el.style.backgroundImage = `url('${url}')`;
+    });
+  }
+  function openAssetDb() {
+    return new Promise((resolve, reject) => {
+      const req = indexedDB.open('kindleforge', 1);
+      req.onupgradeneeded = () => {
+        const db = req.result;
+        if (!db.objectStoreNames.contains('assets')) db.createObjectStore('assets', { keyPath: 'id' });
+      };
+      req.onsuccess = () => resolve(req.result);
+      req.onerror = () => reject(req.error || new Error('Could not open picture storage'));
+    });
+  }
+  function assetIdsIn(bookLike) {
+    const ids = new Set();
+    (bookLike?.pages || []).forEach((p) => {
+      (p.images || []).forEach((im) => { if (isAssetId(im?.src)) ids.add(im.src); });
+      if (isAssetId(p.image)) ids.add(p.image);
+    });
+    return [...ids];
+  }
+  async function persistNewAssets() {
+    const pending = [...imageStore.items.entries()].filter(([, item]) => !item.stored);
+    if (!pending.length) return;
+    const db = await openAssetDb();
+    await new Promise((resolve, reject) => {
+      const tx = db.transaction('assets', 'readwrite');
+      const store = tx.objectStore('assets');
+      pending.forEach(([id, item]) => store.put({ id, mime: item.mime, blob: item.blob }));
+      tx.oncomplete = () => resolve();
+      tx.onerror = () => reject(tx.error || new Error('Could not store pictures'));
+    });
+    pending.forEach(([, item]) => { item.stored = true; });
+    db.close();
+  }
+  async function rehydrateAssets() {
+    const ids = assetIdsIn(book);
+    if (!ids.length) return;
+    const db = await openAssetDb();
+    const missing = [];
+    for (const id of ids) {
+      const row = await new Promise((resolve, reject) => {
+        const tx = db.transaction('assets', 'readonly');
+        const req = tx.objectStore('assets').get(id);
+        req.onsuccess = () => resolve(req.result || null);
+        req.onerror = () => reject(req.error);
+      });
+      if (row?.blob) {
+        imageStore.items.set(id, { blob: row.blob, mime: row.mime || row.blob.type, stored: true });
+        imageStore.total += row.blob.size || 0;
+        const n = Number(id.slice(6));
+        if (n >= imageStore.next) imageStore.next = n + 1;
+      } else missing.push(id);
+    }
+    db.close();
+    if (imageStore.total >= BIG_BOOK_BYTES) noteBigBook();
+    if (missing.length) {
+      showBanner(`${missing.length} picture${missing.length === 1 ? '' : 's'} from the last session ${missing.length === 1 ? 'is' : 'are'} missing. Open the project file again.`, 'error');
+    }
+  }
+
+  function storageBook() {
+    return JSON.parse(JSON.stringify({ book, i: currentPageIndex }, (k, v) => {
+      if ((k === 'src' || k === 'image') && typeof v === 'string' && v.length > 20000 && !isAssetId(v)) return '';
+      return v;
+    })).book;
+  }
+
   function makeSnap() {
     return JSON.stringify({ book, i: currentPageIndex, t: activeTextSlot, im: activeImageSlot }, (k, v) => {
-      if (k === 'src' && typeof v === 'string' && v.length > 180) {
-        let id = history.pool.indexOf(v);
-        if (id < 0) { history.pool.push(v); id = history.pool.length - 1; }
-        return 'pool:' + id;
-      }
+      if ((k === 'src' || k === 'image') && typeof v === 'string' && v.length > 20000 && !isAssetId(v)) return '';
       return v;
     });
   }
   function readSnap(s) {
-    const data = JSON.parse(s);
-    const revive = (src) => (typeof src === 'string' && src.startsWith('pool:') ? (history.pool[Number(src.slice(5))] || '') : src);
-    (data.book.pages || []).forEach((p) => {
-      (p.images || []).forEach((im) => { im.src = revive(im.src); });
-      if (p.image) p.image = revive(p.image);
-    });
-    return data;
+    return JSON.parse(s);
   }
   function pushHistory() {
     if (history.lock) return;
@@ -519,10 +817,21 @@
   function saveLocal() {
     try {
       syncHeaderFields();
-      localStorage.setItem('kindleforge-book', JSON.stringify(book));
+      const payload = storageBook();
+      const json = JSON.stringify(payload);
+      if (json.length > AUTOSAVE_JSON_LIMIT) {
+        showBanner('This book is too big for the browser’s quick autosave. Use Save Project to keep a copy.', 'error');
+        return;
+      }
+      localStorage.setItem('kindleforge-book', json);
       localStorage.setItem('kindleforge-current-page', String(currentPageIndex));
+      if (imageStore.total >= BIG_BOOK_BYTES) noteBigBook();
+      persistNewAssets().catch((e) => {
+        showBanner('The pictures could not be kept in this browser (' + (e.message || e) + '). Use Save Project before you close the tab.', 'error');
+      });
     } catch (e) {
       console.warn('Autosave skipped', e);
+      showBanner('The browser could not autosave this book (' + (e.name === 'QuotaExceededError' ? 'it is larger than the quick-save limit' : (e.message || e)) + '). Use Save Project.', 'error');
     }
   }
   function loadLocal() {
@@ -612,14 +921,15 @@
     </div>`;
   }
 
-  function sheetHtml(page) {
+  function sheetHtml(page, opts = {}) {
     const trim = getTrim();
     const spread = isSpread(page);
     const px = sheetPixels(trim, spread);
     const src = page.images?.[0]?.src || '';
-    const img = src
-      ? `<img class="sheet-img" alt="" src="${escapeHtml(src)}">`
-      : `<div class="sheet-empty">Drop a picture here<br><span style="font-size:12px">It stays whole. Words go on top.</span></div>`;
+    const shown = opts.measure ? '' : viewUrl(src, 'preview');
+    const img = !src
+      ? `<div class="sheet-empty">Drop a picture here<br><span style="font-size:12px">It stays whole. Words go on top.</span></div>`
+      : `<img class="sheet-img" alt="" decoding="async" ${shown ? `src="${escapeHtml(shown)}"` : `data-wait="${escapeHtml(src)}"`}>`;
     const texts = (page.texts || []).map((tb, i) => textBoxHtml(tb, i, i === activeTextSlot)).join('');
     return `<div class="sheet-outer" style="width:${px.wPx}px;height:${px.hPx}px">
       <div class="sheet-clip">${img}</div>
@@ -629,7 +939,9 @@
   }
 
   function previewImage(src, maxH, label) {
-    if (src) return `<img class="paper-img" style="max-height:${maxH}px" src="${escapeHtml(src)}" alt="" data-zoom="1">`;
+    const shown = src ? viewUrl(src, 'preview') : '';
+    if (shown) return `<img class="paper-img" style="max-height:${maxH}px" src="${escapeHtml(shown)}" alt="" data-zoom="1">`;
+    if (isAssetId(src)) return `<img class="paper-img" data-wait="${escapeHtml(src)}" style="max-height:${maxH}px" alt="">`;
     return `<div class="ph-empty" style="min-height:${Math.min(maxH, 140)}px">${label || 'No picture yet'}</div>`;
   }
   function flowText(page) {
@@ -641,7 +953,12 @@
   function customHtml(page) {
     const images = (page.images || []).map((im, i) => {
       const f = frameCustom(im, defaultImageFrame(i, page.images.length), 12, 12);
-      const inner = im.src ? `<img src="${escapeHtml(im.src)}" alt="">` : `<div class="ph-empty" style="height:100%">Image ${i + 1}</div>`;
+      const shown = im.src ? viewUrl(im.src, 'preview') : '';
+      const inner = !im.src
+        ? `<div class="ph-empty" style="height:100%">Image ${i + 1}</div>`
+        : (shown
+          ? `<img src="${escapeHtml(shown)}" alt="">`
+          : `<img alt="" data-wait="${escapeHtml(im.src)}">`);
       return `<div class="custom-box${i === activeImageSlot ? ' selected' : ''}" data-slot="${i}" data-kind="image" style="left:${f.x}%;top:${f.y}%;width:${f.w}%;height:${f.h}%">
         <div class="custom-box-badge">Img ${i + 1}</div>${inner}
         <div class="custom-resize" data-kind="resize" data-slot="${i}"></div>
@@ -666,12 +983,18 @@
     book.pages[currentPageIndex] = normalizePage(page, currentPageIndex);
     const p = book.pages[currentPageIndex];
     if (isPictureLayout(p)) {
+      const src = p.images?.[0]?.src || '';
+      if (isAssetId(src)) releasePreview(src);
       host.innerHTML = sheetHtml(p);
       const sheet = host.querySelector('.sheet-outer');
       const img = sheet.querySelector('.sheet-img');
       if (img) {
-        if (img.complete) layoutSheetImage(sheet, p);
-        img.addEventListener('load', () => layoutSheetImage(sheet, p));
+        const place = () => layoutSheetImage(sheet, p);
+        if (img.complete && img.naturalWidth) place();
+        img.addEventListener('load', place, { once: true });
+        if (!img.getAttribute('src') && isAssetId(src)) {
+          ensureScaled(src, 'preview').then(() => paintCurrentPreview()).catch((e) => console.warn(e));
+        }
       }
       $('stage-hint').textContent = 'Dashed line is the trim. Green is the safe area. Drag text; the picture stays locked.';
       return;
@@ -710,6 +1033,10 @@
       ${body}
       <div class="paper-end">end of page</div>
     </article>`;
+    host.querySelectorAll('img[data-wait]').forEach((img) => {
+      const id = img.getAttribute('data-wait');
+      if (isAssetId(id)) ensureScaled(id, 'preview').then((url) => { if (url) img.src = url; }).catch((e) => console.warn(e));
+    });
     $('stage-hint').textContent = p.layout === 'custom'
       ? 'Custom layout: drag the boxes. Picture pages and spreads keep the art locked.'
       : 'This page uses a classic book layout. Switch to Picture or Spread for a full-bleed illustration.';
@@ -726,8 +1053,10 @@
       const src = p.images?.[0]?.src || '';
       const spread = isSpread(p);
       const artClass = spread || (src && isPictureLayout(p)) ? '' : ' page';
-      const bg = src ? `background-image:url('${src.replace(/'/g, '%27')}')` : '';
-      btn.innerHTML = `<div class="thumb-art${artClass}" style="${bg}">${(p.texts || []).some((t) => (t.content || '').trim()) || p.text ? '<i class="mini-text"></i>' : ''}</div>
+      const thumb = isAssetId(src) ? viewUrl(src, 'thumb') : src;
+      const bg = thumb ? `background-image:url('${String(thumb).replace(/'/g, '%27')}')` : '';
+      const assetAttr = isAssetId(src) ? ` data-asset="${src}"` : '';
+      btn.innerHTML = `<div class="thumb-art${artClass}"${assetAttr} style="${bg}">${(p.texts || []).some((t) => (t.content || '').trim()) || p.text ? '<i class="mini-text"></i>' : ''}</div>
         <div class="thumb-meta"><strong>${escapeHtml(p.title || 'Untitled')}</strong><em>${escapeHtml(PAGE_LAYOUTS[p.layout]?.label || '')}</em></div>`;
       btn.addEventListener('click', () => selectPage(index));
       btn.addEventListener('contextmenu', (e) => {
@@ -737,6 +1066,7 @@
       list.appendChild(btn);
     });
     $('page-count').textContent = String(book.pages.length);
+    queueThumbs();
   }
 
   function setFormValue(id, value) {
@@ -792,8 +1122,9 @@
       setFormValue('bg-y', page.bgY ?? 50);
       const src = page.images?.[0]?.src || '';
       const thumb = $('bg-thumb');
-      thumb.style.display = src ? 'block' : 'none';
-      if (src) thumb.src = src;
+      const shown = viewUrl(src, 'preview') || viewUrl(src, 'thumb');
+      thumb.style.display = shown ? 'block' : 'none';
+      if (shown) thumb.src = shown;
       $('bg-empty').style.display = src ? 'none' : 'block';
     }
     const slots = picture ? 1 : (custom ? (page.images || []).length : (PAGE_LAYOUTS[page.layout].slots));
@@ -1325,10 +1656,10 @@
     if (!isPictureLayout(page)) {
       setLayout('picture');
     }
-    const data = await readImageFile(file);
+    const id = putBlob(file, file.type);
     const p = currentPage();
     commitNow();
-    p.images[0].src = data;
+    p.images[0].src = id;
     p.images[0].prompt = p.images[0].prompt || file.name;
     syncLegacy(p);
     renderAll();
@@ -1346,13 +1677,14 @@
     }
     const pages = [];
     for (const file of images) {
-      const [data, size] = await Promise.all([readImageFile(file), imageFileSize(file)]);
-      const spread = size.w / size.h >= 1.45;
+      const size = await pixelSizeOfBlob(file);
+      const id = putBlob(file, file.type);
+      const spread = size && size.w / size.h >= 1.45;
       const page = normalizePage({
         id: Date.now() + pages.length,
         title: file.name.replace(/\.[^.]+$/, ''),
         layout: spread ? 'spread' : 'picture',
-        images: [{ src: data, prompt: file.name }],
+        images: [{ src: id, prompt: file.name }],
         bgFit: 'cover', bgScale: 1, bgX: 50, bgY: 50,
       }, pages.length);
       page.texts = [makeText({ content: '' }, defaultPictureFrame(page, 0), true)];
@@ -1558,6 +1890,11 @@
   }
   async function fetchBytes(src) {
     if (!src) return null;
+    if (isAssetId(src)) {
+      const item = assetOf(src);
+      if (!item) return null;
+      return { bytes: new Uint8Array(await item.blob.arrayBuffer()), mime: item.mime || item.blob.type || 'image/png' };
+    }
     if (src.startsWith('data:')) {
       const comma = src.indexOf(',');
       const mime = (src.slice(5, src.indexOf(';')) || 'image/jpeg');
@@ -1585,7 +1922,7 @@
     const host = $('measure-host');
     const trim = getTrim();
     const px = sheetPixels(trim, isSpread(page));
-    host.innerHTML = sheetHtml(page);
+    host.innerHTML = sheetHtml(page, { measure: true });
     host.style.width = px.wPx + 'px';
     const sheet = host.querySelector('.sheet-outer');
     await document.fonts.ready;
@@ -1616,17 +1953,32 @@
         const bold = st.weight === 'bold' || !!node.parentElement?.closest('strong, b');
         const italic = st.style === 'italic' || !!node.parentElement?.closest('em, i');
         while ((m = re.exec(value))) {
+          const word = m[0];
           const range = document.createRange();
           range.setStart(node, m.index);
-          range.setEnd(node, m.index + m[0].length);
-          [...range.getClientRects()].forEach((r) => {
-            if (r.width < 0.4) return;
+          range.setEnd(node, m.index + word.length);
+          const rects = [...range.getClientRects()].filter((r) => r.width >= 0.4);
+          let frags;
+          if (rects.length <= 1) {
+            frags = rects.map((r) => ({ text: word, x: r.left, y: r.top, w: r.width, h: r.height }));
+          } else {
+            const glyphRects = [];
+            for (let i = 0; i < word.length; i++) {
+              range.setStart(node, m.index + i);
+              range.setEnd(node, m.index + i + 1);
+              const g = [...range.getClientRects()].find((r) => r.width > 0.1);
+              glyphRects.push(g ? { left: g.left, top: g.top, width: g.width, height: g.height } : null);
+            }
+            frags = (window.KFText ? KFText.groupGlyphs(word, glyphRects) : []);
+          }
+          frags.forEach((frag) => {
+            if (!frag.text) return;
             runs.push({
-              text: m[0], bold, italic, st,
-              x: (r.left - sheetRect.left) / scale,
-              y: (r.top - sheetRect.top) / scale,
-              w: r.width / scale,
-              h: r.height / scale,
+              text: frag.text, bold, italic, st,
+              x: (frag.x - sheetRect.left) / scale,
+              y: (frag.y - sheetRect.top) / scale,
+              w: frag.w / scale,
+              h: frag.h / scale,
             });
           });
         }
@@ -1904,10 +2256,19 @@
   }
   function loadImage(src) {
     return new Promise((resolve, reject) => {
+      let url = src;
+      let revoke = false;
+      if (isAssetId(src)) {
+        const item = assetOf(src);
+        if (!item) { reject(new Error('Missing picture')); return; }
+        url = URL.createObjectURL(item.blob);
+        revoke = true;
+      }
       const img = new Image();
-      img.onload = () => resolve(img);
-      img.onerror = reject;
-      img.src = src;
+      const done = () => { if (revoke) URL.revokeObjectURL(url); };
+      img.onload = () => { done(); resolve(img); };
+      img.onerror = () => { done(); reject(new Error('Could not read a picture')); };
+      img.src = url;
     });
   }
   async function rasterClassic(page) {
@@ -2143,8 +2504,8 @@ ${nav.map((n) => `<li><a href="${n.href}">${escapeXml(n.title)}</a></li>`).join(
       const file = `${id}.${ext}`;
       imagesFolder.file(file, got.bytes);
       images.push({ id, file, mime: got.mime.includes('png') ? 'image/png' : 'image/jpeg' });
-      const imgEl = await loadImage(page.images[0].src);
-      const place = imagePlacement(imgEl.naturalWidth, imgEl.naturalHeight, px.wPx, px.hPx, page.bgFit || 'cover', page.bgScale || 1, page.bgX ?? 50, page.bgY ?? 50);
+      const size = blobPixelSize(got.bytes) || { w: px.wPx, h: px.hPx };
+      const place = imagePlacement(size.w, size.h, px.wPx, px.hPx, page.bgFit || 'cover', page.bgScale || 1, page.bgX ?? 50, page.bgY ?? 50);
       imgTag = { file, place };
     }
     return slices.map((slice) => {
@@ -2250,7 +2611,10 @@ ${nav.map((n) => `<li><a href="${n.href}">${escapeXml(n.title)}</a></li>`).join(
       }
       const out = {
         id: norm.id, title: norm.title, text: norm.text, textPrompt: norm.textPrompt,
-        layout: norm.layout, images, image: images[0]?.src || '', imagePrompt: images[0]?.prompt || '',
+        layout: norm.layout,
+        images,
+        image: (images[0]?.src || '').length > 200000 ? '' : (images[0]?.src || ''),
+        imagePrompt: images[0]?.prompt || '',
         textStyle: norm.textStyle,
       };
       if (norm.pageStart) out.pageStart = norm.pageStart;
@@ -2279,30 +2643,38 @@ ${nav.map((n) => `<li><a href="${n.href}">${escapeXml(n.title)}</a></li>`).join(
     const st = normalizeTextStyle(t, PICTURE_TEXT);
     return { content: t.content || '', x: t.x, y: t.y, w: t.w, h: t.h, ...st };
   }
-  async function srcToData(src) {
-    if (!src || src.startsWith('data:')) return src;
-    const got = await fetchBytes(src);
+  function bytesToDataUrl(bytes, mime) {
     let binary = '';
     const chunk = 0x8000;
-    for (let i = 0; i < got.bytes.length; i += chunk) {
-      binary += String.fromCharCode.apply(null, got.bytes.subarray(i, i + chunk));
+    for (let i = 0; i < bytes.length; i += chunk) {
+      binary += String.fromCharCode.apply(null, bytes.subarray(i, i + chunk));
     }
-    return `data:${got.mime};base64,${btoa(binary)}`;
+    return `data:${mime || 'image/png'};base64,${btoa(binary)}`;
+  }
+  async function srcToData(src) {
+    if (!src || src.startsWith('data:')) return src || '';
+    const got = await fetchBytes(src);
+    if (!got) return '';
+    return bytesToDataUrl(got.bytes, got.mime);
   }
   async function saveProjectFile() {
     try {
-      showToast('Packing the project…');
+      showBanner(imageStore.total >= BIG_BOOK_BYTES
+        ? 'Packing the project… a large book takes a moment, and the file holds every picture.'
+        : 'Packing the project…');
       const project = await buildProject();
-      const blob = new Blob([JSON.stringify(project, null, 2)], { type: 'application/json' });
+      const pretty = imageStore.total < BIG_BOOK_BYTES;
+      const blob = new Blob([JSON.stringify(project, null, pretty ? 2 : 0)], { type: 'application/json' });
       downloadBlob(blob, `${slug(project.book.title)}-${new Date().toISOString().slice(0, 10)}.kindleforge.json`);
       saveLocal();
       showToast('Project saved. Pictures are packed inside the file.');
+      if (imageStore.total < BIG_BOOK_BYTES) hideBanner();
     } catch (e) {
       console.error(e);
-      showToast('Could not save the project.');
+      showBanner('Could not save the project. ' + (e.message || ''), 'error');
     }
   }
-  function loadProjectObject(data) {
+  async function loadProjectObject(data) {
     let loaded; let index = 0;
     if (data && data.format === PROJECT_FORMAT && data.book) {
       loaded = data.book; index = data.currentPageIndex || 0;
@@ -2310,6 +2682,9 @@ ${nav.map((n) => `<li><a href="${n.href}">${escapeXml(n.title)}</a></li>`).join(
     else if (data && data.book && Array.isArray(data.book.pages)) {
       loaded = data.book; index = data.currentPageIndex || 0;
     } else throw new Error('This is not a KindleForge project.');
+    await ingestBookImages(loaded, (n, total) => {
+      if (total > 1) showBanner(`Unpacking pictures… ${n} of ${total}`);
+    });
     book = {
       title: loaded.title || 'Untitled',
       author: loaded.author || '',
@@ -2327,19 +2702,36 @@ ${nav.map((n) => `<li><a href="${n.href}">${escapeXml(n.title)}</a></li>`).join(
     resetHistory();
     saveLocal();
     requestAnimationFrame(zoomFit);
+    if (imageStore.total >= BIG_BOOK_BYTES) {
+      imageStore.bigNoted = true;
+      showBanner('This book is too big for the browser’s quick autosave (that store only holds a few megabytes). The pictures stay in this browser so a refresh can find them. Use Save Project for one file you can move to another computer.');
+    } else {
+      hideBanner();
+    }
   }
   function loadProjectFromFile(file) {
+    if (!file) return;
+    const mb = file.size / (1024 * 1024);
+    const label = file.name || 'this project';
+    if (mb > 8) {
+      if (!confirm(`This project is ${mb.toFixed(0)} MB, pictures included.\n\nKindleForge will show smaller previews and keep the full pictures for export. The browser’s quick autosave cannot hold a file this big — use Save Project for a copy you can move.\n\nOpen “${label}”?`)) return;
+    } else if (!confirm(`Load “${label}”? This replaces the book on screen.`)) return;
+    showBanner(mb > 8 ? `Reading ${mb.toFixed(0)} MB…` : 'Reading the project…');
     const reader = new FileReader();
+    reader.onerror = () => showBanner('Could not read that file.', 'error');
     reader.onload = () => {
-      try {
-        const data = JSON.parse(reader.result);
-        const label = data.book?.title || data.title || file.name;
-        if (!confirm(`Load “${label}”? This replaces the book on screen.`)) return;
-        loadProjectObject(data);
-        showToast(`Loaded ${label}.`);
-      } catch (e) {
-        showToast(e.message || 'Could not load that file.');
-      }
+      setTimeout(async () => {
+        try {
+          const data = JSON.parse(reader.result);
+          await loadProjectObject(data);
+          const name = data.book?.title || data.title || label;
+          showToast(`Loaded ${name}.`);
+          if (imageStore.total < BIG_BOOK_BYTES) hideBanner();
+        } catch (e) {
+          console.error(e);
+          showBanner('Could not open that project. ' + (e.message || 'It may be damaged, or too large for this browser to read.'), 'error');
+        }
+      }, 40);
     };
     reader.readAsText(file);
   }
@@ -2373,8 +2765,13 @@ ${nav.map((n) => `<li><a href="${n.href}">${escapeXml(n.title)}</a></li>`).join(
     let n = 0;
     for (const page of book.pages) {
       for (const im of page.images || []) {
-        if (im.src && !im.src.startsWith('data:')) {
-          try { im.src = await srcToData(im.src); n += 1; } catch (e) { console.warn(e); }
+        if (im.src && !im.src.startsWith('data:') && !isAssetId(im.src)) {
+          try {
+            const res = await fetch(im.src);
+            const blob = await res.blob();
+            im.src = putBlob(blob, blob.type);
+            n += 1;
+          } catch (e) { console.warn(e); }
         }
       }
       syncLegacy(page);
@@ -2433,7 +2830,7 @@ ${nav.map((n) => `<li><a href="${n.href}">${escapeXml(n.title)}</a></li>`).join(
       if (data.image_base64) src = `data:image/png;base64,${data.image_base64}`;
       else if (data.image_path) src = data.image_path.startsWith('http') ? data.image_path : `${url.replace(/\/$/, '')}/${data.image_path.replace(/^\/+/, '')}`;
       if (!src) throw new Error('No image');
-      page.images[slot].src = src;
+      page.images[slot].src = ingestSrc(src);
       syncLegacy(page);
       renderAll();
       commitNow();
@@ -2822,11 +3219,15 @@ Run with: python -m http.server 8000`;
     const theme = localStorage.getItem('kindleforge-theme') || 'light';
     document.documentElement.dataset.theme = theme;
     bind();
+    const bannerClose = $('app-banner-close');
+    if (bannerClose) bannerClose.addEventListener('click', hideBanner);
     try {
       if (location.hash === '#picture-demo') await loadPictureDemo(true);
-      else if (!loadLocal()) loadFoxDemoSilent();
+      else if (loadLocal()) await rehydrateAssets();
+      else loadFoxDemoSilent();
     } catch (e) {
       console.warn(e);
+      showBanner('Could not restore the last book. ' + (e.message || ''), 'error');
       if (!book.pages.length) loadFoxDemoSilent();
     }
     if (!book.pages.length) loadFoxDemoSilent();
@@ -2846,6 +3247,25 @@ Run with: python -m http.server 8000`;
     currentPageIndex = 0;
   }
 
-  window.KF = { get book() { return book; }, undo, redo, exportPDF, measurePicture };
+  window.KF = {
+    get book() { return book; },
+    undo, redo, exportPDF, measurePicture, loadProjectObject,
+    memoryReport() {
+      let thumbs = 0;
+      let previews = 0;
+      imageStore.items.forEach((item) => {
+        if (item.thumbUrl) thumbs += 1;
+        if (item.previewUrl) previews += 1;
+      });
+      return {
+        assets: imageStore.items.size,
+        bytes: imageStore.total,
+        snapChars: history.stack[history.index] ? history.stack[history.index].length : 0,
+        snaps: history.stack.length,
+        thumbs,
+        previews,
+      };
+    },
+  };
   init();
 })();

@@ -50,7 +50,7 @@ Nothing here uploads to KDP. Open the PDF in a viewer and check the trim box bef
 - `sizePt` is the type size in points. `strokeOn`, `shadowOn`, and `panelOn` are the three switches.
 - `stylePresets` are the named looks saved in that project.
 
-The browser also keeps the last book in localStorage. A book with several large pictures can be too big for that; the project file is the copy to keep.
+The browser keeps a small autosave of the last book. A project with full-size picture-book art is too big for that store: KindleForge keeps those pictures in this browser and shows smaller previews, and the full files are used only when you export. A banner says so. **Save Project** still writes one `.kindleforge.json` with every picture inside it. If a file cannot be opened, the reason stays on screen instead of failing quietly.
 
 ## What is bundled
 

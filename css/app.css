@@ -71,6 +71,25 @@ button { cursor: pointer; }
 button:disabled { opacity: 0.45; cursor: default; }
 :focus-visible { outline: 2px solid var(--accent); outline-offset: 2px; }
 
+.app-banner {
+  flex: none;
+  display: flex;
+  align-items: flex-start;
+  gap: 12px;
+  padding: 10px 14px;
+  background: var(--accent-soft);
+  color: var(--ink);
+  border-bottom: 1px solid var(--accent-line);
+  font-size: 13px;
+  line-height: 1.4;
+}
+.app-banner.error { background: #fde8e6; color: #6b211c; border-bottom-color: #e7b2ab; }
+html[data-theme="dark"] .app-banner.error { background: #4a2422; color: #ffd9d4; border-bottom-color: #7a403a; }
+#app-banner-text { flex: 1; }
+#app-banner-close {
+  border: 0; background: transparent; color: inherit; font-size: 18px; line-height: 1; padding: 0 4px;
+}
+
 .topbar {
   height: 58px;
   flex: none;
