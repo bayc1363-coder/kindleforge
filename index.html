@@ -9,6 +9,7 @@
   <script src="vendor/fontkit.umd.min.js"></script>
   <script src="vendor/jszip.min.js"></script>
   <script src="js/text-runs.js"></script>
+  <script src="js/project-file.js"></script>
 </head>
 <body>
   <div id="app-banner" class="app-banner hidden" role="status">
@@ -58,13 +59,15 @@
           <button type="button" data-action="export-html">HTML preview</button>
         </div>
       </div>
-      <button type="button" class="btn" data-action="save-project" data-tip="Save project (Ctrl+S)">Save</button>
+      <span id="save-state" class="save-state" title="Save status">Not saved to a file</span>
+      <button type="button" class="btn" data-action="save-project" data-tip="Save (Ctrl+S). After the first save, this overwrites the same file.">Save</button>
       <button type="button" class="btn" data-action="load-project" data-tip="Load project (Ctrl+O)">Load</button>
       <div class="menu">
         <button type="button" class="icon-btn" data-menu="more" data-tip="More" aria-label="More">
           <svg viewBox="0 0 24 24" fill="currentColor"><circle cx="6" cy="12" r="1.6"/><circle cx="12" cy="12" r="1.6"/><circle cx="18" cy="12" r="1.6"/></svg>
         </button>
         <div class="menu-pop">
+          <button type="button" data-action="save-as">Save as…<span class="hint">Write a new project file</span></button>
           <button type="button" data-action="load-picture-demo">Load picture-book demo</button>
           <button type="button" data-action="load-fox-demo">Load classic fox demo</button>
           <button type="button" data-action="make-portable">Make images portable</button>

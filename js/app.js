@@ -460,7 +460,7 @@
   function noteBigBook() {
     if (imageStore.bigNoted || imageStore.total < BIG_BOOK_BYTES) return;
     imageStore.bigNoted = true;
-    showBanner('This book is too big for the browser’s quick autosave (that store only holds a few megabytes). The pictures stay in this browser so a refresh can find them. Use Save Project for one file you can move to another computer.');
+    showBanner('Pictures stay in this browser. Save writes each one once into the project file, and that file updates when you change pages.');
   }
   function dataUrlToBlob(dataUrl) {
     const comma = dataUrl.indexOf(',');
@@ -493,6 +493,10 @@
   }
   async function ingestBookImages(bookLike, onProgress) {
     const pages = bookLike?.pages || [];
+    pages.forEach((p) => {
+      const first = p.images && p.images[0] && p.images[0].src;
+      if (typeof p.image === 'string' && p.image.length >= 20000 && first && p.image === first) p.image = '';
+    });
     const jobs = [];
     pages.forEach((p, pi) => {
       (p.images || []).forEach((im, ii) => {
@@ -561,9 +565,9 @@
         const scale = maxEdge / Math.max(size.w, size.h);
         const w = Math.max(1, Math.round(size.w * scale));
         const h = Math.max(1, Math.round(size.h * scale));
-        bmp = await createImageBitmap(item.blob, { resizeWidth: w, resizeHeight: h, resizeQuality: 'medium' });
+        bmp = await withDecode(() => createImageBitmap(item.blob, { resizeWidth: w, resizeHeight: h, resizeQuality: 'medium' }));
       } else {
-        bmp = await createImageBitmap(item.blob);
+        bmp = await withDecode(() => createImageBitmap(item.blob));
       }
       const canvas = document.createElement('canvas');
       canvas.width = bmp.width;
@@ -582,7 +586,7 @@
       delete item.pending[kind];
       console.warn(e);
       try {
-        const full = await createImageBitmap(item.blob);
+        const full = await withDecode(() => createImageBitmap(item.blob));
         const maxEdge = kind === 'thumb' ? THUMB_MAX : PREVIEW_MAX;
         const scale = Math.min(1, maxEdge / Math.max(full.width, full.height));
         const canvas = document.createElement('canvas');
@@ -617,6 +621,12 @@
         item.previewUrl = '';
       }
     });
+  }
+  let decodeChain = Promise.resolve();
+  function withDecode(fn) {
+    const run = decodeChain.then(fn, fn);
+    decodeChain = run.then(() => {}, () => {});
+    return run;
   }
   let thumbQueue = Promise.resolve();
   let thumbPass = false;
@@ -675,10 +685,11 @@
   }
   function openAssetDb() {
     return new Promise((resolve, reject) => {
-      const req = indexedDB.open('kindleforge', 1);
+      const req = indexedDB.open('kindleforge', 2);
       req.onupgradeneeded = () => {
         const db = req.result;
         if (!db.objectStoreNames.contains('assets')) db.createObjectStore('assets', { keyPath: 'id' });
+        if (!db.objectStoreNames.contains('meta')) db.createObjectStore('meta');
       };
       req.onsuccess = () => resolve(req.result);
       req.onerror = () => reject(req.error || new Error('Could not open picture storage'));
@@ -732,18 +743,51 @@
     }
   }
 
+  function liteSrc(src) {
+    if (!src || typeof src !== 'string') return '';
+    if (isAssetId(src) || src.length < 20000) return src;
+    return '';
+  }
+  function litePage(p) {
+    return {
+      id: p.id,
+      title: p.title || '',
+      text: p.text || '',
+      textPrompt: p.textPrompt || '',
+      layout: p.layout,
+      images: (p.images || []).map((im) => ({
+        src: liteSrc(im && im.src),
+        prompt: (im && im.prompt) || '',
+        ...(p.layout === 'custom' ? { x: im.x, y: im.y, w: im.w, h: im.h } : {}),
+      })),
+      image: liteSrc(p.image),
+      imagePrompt: p.imagePrompt || '',
+      textStyle: p.textStyle,
+      textFrame: p.textFrame,
+      texts: p.texts,
+      pageStart: p.pageStart,
+      bgFit: p.bgFit,
+      bgScale: p.bgScale,
+      bgX: p.bgX,
+      bgY: p.bgY,
+    };
+  }
+  function liteBook() {
+    return {
+      title: book.title || '',
+      author: book.author || '',
+      bookStyleNotes: book.bookStyleNotes || '',
+      trim: book.trim,
+      stylePresets: book.stylePresets || [],
+      pages: (book.pages || []).map(litePage),
+    };
+  }
   function storageBook() {
-    return JSON.parse(JSON.stringify({ book, i: currentPageIndex }, (k, v) => {
-      if ((k === 'src' || k === 'image') && typeof v === 'string' && v.length > 20000 && !isAssetId(v)) return '';
-      return v;
-    })).book;
+    return liteBook();
   }
 
   function makeSnap() {
-    return JSON.stringify({ book, i: currentPageIndex, t: activeTextSlot, im: activeImageSlot }, (k, v) => {
-      if ((k === 'src' || k === 'image') && typeof v === 'string' && v.length > 20000 && !isAssetId(v)) return '';
-      return v;
-    });
+    return JSON.stringify({ book: liteBook(), i: currentPageIndex, t: activeTextSlot, im: activeImageSlot });
   }
   function readSnap(s) {
     return JSON.parse(s);
@@ -780,6 +824,7 @@
     renderAll();
     history.lock = false;
     updateUndo();
+    scheduleSave();
   }
   function undo() {
     clearTimeout(historyTimer);
@@ -810,9 +855,72 @@
     $('btn-redo').disabled = history.index >= history.stack.length - 1;
   }
 
+  let saveHandle = null;
+  let pendingHandle = null;
+  let projectDirty = false;
+  let lastSavedAt = null;
+  let fileSaveLock = null;
+  let editSerial = 0;
+
+  function markDirty() {
+    if (history.lock) return;
+    editSerial += 1;
+    projectDirty = true;
+    updateSaveIndicator();
+  }
+  function updateSaveIndicator() {
+    const el = $('save-state');
+    if (!el) return;
+    el.classList.remove('dirty', 'saving');
+    if (fileSaveLock) {
+      el.textContent = 'Saving…';
+      el.classList.add('saving');
+      return;
+    }
+    if (projectDirty) {
+      el.textContent = 'Unsaved changes';
+      el.classList.add('dirty');
+      el.title = saveHandle ? ('Will overwrite ' + (saveHandle.name || 'the project file')) : 'Not written to a file yet';
+      return;
+    }
+    if (lastSavedAt) {
+      const hh = String(lastSavedAt.getHours()).padStart(2, '0');
+      const mm = String(lastSavedAt.getMinutes()).padStart(2, '0');
+      el.textContent = 'Saved ' + hh + ':' + mm;
+      el.title = saveHandle ? ('Saved to ' + (saveHandle.name || 'the project file')) : 'Saved in this browser';
+      return;
+    }
+    el.textContent = saveHandle ? ('Using ' + (saveHandle.name || 'project file')) : 'Not saved to a file';
+  }
+  function logError(message, error) {
+    try {
+      const list = JSON.parse(localStorage.getItem('kindleforge-errors') || '[]');
+      list.push({
+        at: new Date().toISOString(),
+        message: String(message || (error && error.message) || 'Unknown error').slice(0, 500),
+        stack: String((error && error.stack) || '').slice(0, 800),
+      });
+      localStorage.setItem('kindleforge-errors', JSON.stringify(list.slice(-6)));
+    } catch (e) { /* the log itself must not throw */ }
+  }
+  function showStoredErrors() {
+    try {
+      const list = JSON.parse(localStorage.getItem('kindleforge-errors') || '[]');
+      const last = list[list.length - 1];
+      if (!last) return;
+      localStorage.removeItem('kindleforge-errors');
+      const when = String(last.at || '').replace('T', ' ').slice(0, 16);
+      const text = 'The last session hit an error' + (when ? ' at ' + when : '') + ': ' + last.message;
+      const banner = $('app-banner');
+      const already = banner && !banner.classList.contains('hidden') ? $('app-banner-text').textContent : '';
+      showBanner(already ? already + ' ' + text : text, 'error');
+    } catch (e) { /* ignore a damaged log */ }
+  }
+
   function scheduleSave() {
+    markDirty();
     clearTimeout(saveTimer);
-    saveTimer = setTimeout(saveLocal, 250);
+    saveTimer = setTimeout(() => { saveLocal(); writeRecovery(); }, 400);
   }
   function saveLocal() {
     try {
@@ -820,18 +928,19 @@
       const payload = storageBook();
       const json = JSON.stringify(payload);
       if (json.length > AUTOSAVE_JSON_LIMIT) {
-        showBanner('This book is too big for the browser’s quick autosave. Use Save Project to keep a copy.', 'error');
+        showBanner('This book is too big for the browser’s quick note. Use Save to keep a file.', 'error');
         return;
       }
       localStorage.setItem('kindleforge-book', json);
       localStorage.setItem('kindleforge-current-page', String(currentPageIndex));
+      localStorage.setItem('kindleforge-touch', new Date().toISOString());
       if (imageStore.total >= BIG_BOOK_BYTES) noteBigBook();
       persistNewAssets().catch((e) => {
-        showBanner('The pictures could not be kept in this browser (' + (e.message || e) + '). Use Save Project before you close the tab.', 'error');
+        showBanner('The pictures could not be kept in this browser (' + (e.message || e) + '). Use Save before you close the tab.', 'error');
       });
     } catch (e) {
       console.warn('Autosave skipped', e);
-      showBanner('The browser could not autosave this book (' + (e.name === 'QuotaExceededError' ? 'it is larger than the quick-save limit' : (e.message || e)) + '). Use Save Project.', 'error');
+      showBanner('The browser could not keep a quick note of this book (' + (e.name === 'QuotaExceededError' ? 'it is larger than that note can hold' : (e.message || e)) + '). Use Save.', 'error');
     }
   }
   function loadLocal() {
@@ -1258,11 +1367,13 @@
   function selectPage(index) {
     if (index < 0 || index >= book.pages.length) return;
     syncEditorToModel();
+    const shouldWrite = projectDirty;
     currentPageIndex = index;
     activeTextSlot = 0;
     activeImageSlot = 0;
     renderAll();
-    scheduleSave();
+    try { localStorage.setItem('kindleforge-current-page', String(currentPageIndex)); } catch (e) { /* ignore */ }
+    if (shouldWrite) void autosaveFile();
     requestAnimationFrame(zoomFit);
   }
   function syncEditorToModel() {
@@ -2263,7 +2374,7 @@
     ctx.closePath();
   }
   function loadImage(src) {
-    return new Promise((resolve, reject) => {
+    return withDecode(() => new Promise((resolve, reject) => {
       let url = src;
       let revoke = false;
       if (isAssetId(src)) {
@@ -2277,7 +2388,7 @@
       img.onload = () => { done(); resolve(img); };
       img.onerror = () => { done(); reject(new Error('Could not read a picture')); };
       img.src = url;
-    });
+    }));
   }
   async function rasterClassic(page) {
     const trim = getTrim();
@@ -2602,84 +2713,196 @@ ${nav.map((n) => `<li><a href="${n.href}">${escapeXml(n.title)}</a></li>`).join(
     setTimeout(() => URL.revokeObjectURL(a.href), 2500);
   }
 
-  async function buildProject() {
-    syncEditorToModel();
-    const pages = [];
-    for (const page of book.pages) {
-      const norm = normalizePage(page, pages.length);
-      const images = [];
-      for (const im of norm.images || []) {
-        let src = im.src || '';
-        if (src && !src.startsWith('data:')) {
-          try { src = await srcToData(src); } catch (e) { /* keep the original path */ }
-        }
-        const entry = { src, prompt: im.prompt || '' };
-        if (norm.layout === 'custom') { entry.x = im.x; entry.y = im.y; entry.w = im.w; entry.h = im.h; }
-        images.push(entry);
-      }
-      const out = {
-        id: norm.id, title: norm.title, text: norm.text, textPrompt: norm.textPrompt,
-        layout: norm.layout,
-        images,
-        image: (images[0]?.src || '').length > 200000 ? '' : (images[0]?.src || ''),
-        imagePrompt: images[0]?.prompt || '',
-        textStyle: norm.textStyle,
-      };
-      if (norm.pageStart) out.pageStart = norm.pageStart;
-      if (isPictureLayout(norm)) {
-        out.bgFit = norm.bgFit; out.bgScale = norm.bgScale; out.bgX = norm.bgX; out.bgY = norm.bgY;
-        out.texts = (norm.texts || []).map(serializeText);
-      } else if (norm.layout === 'custom') {
-        out.textFrame = norm.textFrame;
-        out.texts = (norm.texts || []).map(serializeText);
-      }
-      pages.push(out);
-    }
-    return {
-      format: PROJECT_FORMAT,
-      version: PROJECT_VERSION,
-      guide: PROJECT_GUIDE,
-      savedAt: new Date().toISOString(),
-      currentPageIndex,
-      book: {
-        title: book.title, author: book.author, bookStyleNotes: book.bookStyleNotes || '',
-        trim: getTrim(), stylePresets: book.stylePresets || [], pages,
-      },
-    };
-  }
   function serializeText(t) {
     const st = normalizeTextStyle(t, PICTURE_TEXT);
     return { content: t.content || '', x: t.x, y: t.y, w: t.w, h: t.h, ...st };
   }
-  function bytesToDataUrl(bytes, mime) {
-    let binary = '';
-    const chunk = 0x8000;
-    for (let i = 0; i < bytes.length; i += chunk) {
-      binary += String.fromCharCode.apply(null, bytes.subarray(i, i + chunk));
+  function assertSaveable() {
+    syncEditorToModel();
+    if (!book.pages || !book.pages.length) throw new Error('There are no pages to save.');
+    for (const page of book.pages) {
+      for (const im of page.images || []) {
+        if (im && isAssetId(im.src) && !assetOf(im.src)) {
+          throw new Error('A picture is missing, so nothing was written over the file.');
+        }
+      }
     }
-    return `data:${mime || 'image/png'};base64,${btoa(binary)}`;
   }
-  async function srcToData(src) {
-    if (!src || src.startsWith('data:')) return src || '';
-    const got = await fetchBytes(src);
-    if (!got) return '';
-    return bytesToDataUrl(got.bytes, got.mime);
+  async function resolveSaveImage(src) {
+    if (isAssetId(src)) {
+      const item = assetOf(src);
+      if (!item) throw new Error('A picture is missing, so nothing was written over the file.');
+      return { bytes: new Uint8Array(await item.blob.arrayBuffer()), mime: item.mime || item.blob.type || 'image/png' };
+    }
+    if (src && src.startsWith('data:') && src.length >= 20000) {
+      const blob = dataUrlToBlob(src);
+      return { bytes: new Uint8Array(await blob.arrayBuffer()), mime: blob.type || 'image/png' };
+    }
+    return null;
   }
-  async function saveProjectFile() {
+  async function streamProjectTo(write) {
+    syncEditorToModel();
+    let required = 0;
+    (book.pages || []).forEach((page) => {
+      (page.images || []).forEach((im) => {
+        const src = im && im.src;
+        if (isAssetId(src) || (typeof src === 'string' && src.startsWith('data:') && src.length >= 20000)) required += 1;
+      });
+    });
+    let embedded = 0;
+    await KFProject.writeProject({ ...liteBook(), currentPageIndex }, write, async (src) => {
+      const resolved = await resolveSaveImage(src);
+      if (resolved && resolved.bytes) embedded += 1;
+      return resolved;
+    });
+    if (embedded < required) throw new Error('The save stopped early, so the previous file was kept.');
+  }
+  async function idbMeta(mode, key, value) {
+    const db = await openAssetDb();
     try {
-      showBanner(imageStore.total >= BIG_BOOK_BYTES
-        ? 'Packing the project… a large book takes a moment, and the file holds every picture.'
-        : 'Packing the project…');
-      const project = await buildProject();
-      const pretty = imageStore.total < BIG_BOOK_BYTES;
-      const blob = new Blob([JSON.stringify(project, null, pretty ? 2 : 0)], { type: 'application/json' });
-      downloadBlob(blob, `${slug(project.book.title)}-${new Date().toISOString().slice(0, 10)}.kindleforge.json`);
-      saveLocal();
-      showToast('Project saved. Pictures are packed inside the file.');
-      if (imageStore.total < BIG_BOOK_BYTES) hideBanner();
+      return await new Promise((resolve, reject) => {
+        const tx = db.transaction('meta', mode);
+        const store = tx.objectStore('meta');
+        const req = mode === 'readwrite' ? store.put(value, key) : store.get(key);
+        req.onsuccess = () => resolve(req.result);
+        req.onerror = () => reject(req.error);
+        tx.onerror = () => reject(tx.error);
+      });
+    } finally {
+      db.close();
+    }
+  }
+  async function writeRecovery() {
+    try {
+      await idbMeta('readwrite', 'recovery', {
+        savedAt: new Date().toISOString(),
+        dirty: projectDirty,
+        currentPageIndex,
+        book: liteBook(),
+      });
     } catch (e) {
+      console.warn('recovery', e);
+    }
+  }
+  async function rememberHandle(handle) {
+    saveHandle = handle;
+    pendingHandle = null;
+    try { await idbMeta('readwrite', 'saveFile', handle); } catch (e) { console.warn(e); }
+    updateSaveIndicator();
+  }
+  function savePickerTypes() {
+    return {
+      suggestedName: `${slug(book.title)}.kindleforge.json`,
+      types: [{
+        description: 'KindleForge project',
+        accept: { 'application/json': ['.kindleforge.json', '.json'] },
+      }],
+    };
+  }
+  async function writeHandle(handle) {
+    if (fileSaveLock) return fileSaveLock;
+    assertSaveable();
+    updateSaveIndicator();
+    const run = (async () => {
+      const writable = await handle.createWritable();
+      try {
+        await streamProjectTo((chunk) => writable.write(chunk));
+        await writable.close();
+      } catch (e) {
+        try { await writable.abort(); } catch (abortErr) { /* leave the previous file */ }
+        throw e;
+      }
+    })();
+    const serial = editSerial;
+    fileSaveLock = run;
+    updateSaveIndicator();
+    try {
+      await run;
+      if (editSerial === serial) projectDirty = false;
+      lastSavedAt = new Date();
+      saveLocal();
+      await writeRecovery();
+      updateSaveIndicator();
+    } finally {
+      fileSaveLock = null;
+      updateSaveIndicator();
+    }
+  }
+  async function downloadProject() {
+    assertSaveable();
+    const chunks = [];
+    await streamProjectTo((chunk) => { chunks.push(chunk); });
+    downloadBlob(new Blob(chunks), `${slug(book.title)}-${new Date().toISOString().slice(0, 10)}.kindleforge.json`);
+    projectDirty = false;
+    lastSavedAt = new Date();
+    updateSaveIndicator();
+  }
+  async function saveProjectFile(saveAs) {
+    try {
+      if (typeof window.showSaveFilePicker === 'function') {
+        let handle = !saveAs && saveHandle;
+        if (!handle && !saveAs && pendingHandle) {
+          const perm = await pendingHandle.requestPermission({ mode: 'readwrite' });
+          if (perm === 'granted') handle = pendingHandle;
+        }
+        if (!handle) handle = await window.showSaveFilePicker(savePickerTypes());
+        await rememberHandle(handle);
+        showBanner(imageStore.total >= BIG_BOOK_BYTES ? 'Saving the project… the pictures are written once.' : 'Saving…');
+        await writeHandle(handle);
+        showToast('Saved ' + (handle.name || 'project') + '.');
+        if (imageStore.total < BIG_BOOK_BYTES) hideBanner();
+        return;
+      }
+      showBanner('This browser will download a new file each time. Chrome or Edge can overwrite the same file.');
+      await downloadProject();
+      showToast('Project downloaded. Pictures are packed inside the file.');
+    } catch (e) {
+      if (e && e.name === 'AbortError') return;
       console.error(e);
-      showBanner('Could not save the project. ' + (e.message || ''), 'error');
+      logError('Save failed', e);
+      showBanner('Could not save. The previous file was left as it was. ' + (e.message || ''), 'error');
+    }
+  }
+  async function autosaveFile() {
+    writeRecovery();
+    if (!projectDirty || !saveHandle || fileSaveLock) return;
+    try {
+      await writeHandle(saveHandle);
+    } catch (e) {
+      logError('Autosave failed', e);
+      showBanner('Autosave did not change the file. ' + (e.message || ''), 'error');
+    }
+  }
+  async function restoreSaveHandle() {
+    try {
+      const handle = await idbMeta('readonly', 'saveFile');
+      if (!handle || !handle.queryPermission) return;
+      const perm = await handle.queryPermission({ mode: 'readwrite' });
+      if (perm === 'granted') saveHandle = handle;
+      else pendingHandle = handle;
+      updateSaveIndicator();
+    } catch (e) { console.warn(e); }
+  }
+  async function restoreRecovery() {
+    try {
+      const rec = await idbMeta('readonly', 'recovery');
+      if (!rec || !rec.book || !Array.isArray(rec.book.pages) || !rec.book.pages.length) return false;
+      if (!rec.dirty && book.pages && book.pages.length) return false;
+      const touch = localStorage.getItem('kindleforge-touch') || '';
+      if (touch && rec.savedAt && rec.savedAt < touch) return false;
+      book = rec.book;
+      normalizeBookPages();
+      currentPageIndex = clamp(rec.currentPageIndex || 0, 0, book.pages.length - 1);
+      await rehydrateAssets();
+      projectDirty = true;
+      editSerial += 1;
+      updateSaveIndicator();
+      const when = String(rec.savedAt || '').replace('T', ' ').slice(0, 16);
+      showBanner('Restored unsaved work' + (when ? ' from ' + when : '') + '. Save writes it to the project file.');
+      return true;
+    } catch (e) {
+      console.warn(e);
+      return false;
     }
   }
   async function loadProjectObject(data) {
@@ -2708,21 +2931,53 @@ ${nav.map((n) => `<li><a href="${n.href}">${escapeXml(n.title)}</a></li>`).join(
     syncHeader();
     renderAll();
     resetHistory();
+    projectDirty = false;
     saveLocal();
+    writeRecovery();
+    updateSaveIndicator();
     requestAnimationFrame(zoomFit);
     if (imageStore.total >= BIG_BOOK_BYTES) {
       imageStore.bigNoted = true;
-      showBanner('This book is too big for the browser’s quick autosave (that store only holds a few megabytes). The pictures stay in this browser so a refresh can find them. Use Save Project for one file you can move to another computer.');
+      showBanner('Pictures stay in this browser. Save writes each one once into the project file, and that file updates when you change pages.');
     } else {
       hideBanner();
     }
   }
-  function loadProjectFromFile(file) {
+  async function openProject() {
+    if (typeof window.showOpenFilePicker === 'function') {
+      try {
+        const [handle] = await window.showOpenFilePicker({
+          multiple: false,
+          types: [{
+            description: 'KindleForge project',
+            accept: { 'application/json': ['.kindleforge.json', '.json'] },
+          }],
+        });
+        const file = await handle.getFile();
+        let granted = false;
+        try {
+          granted = (await handle.requestPermission({ mode: 'readwrite' })) === 'granted';
+        } catch (e) { /* Save will ask again */ }
+        loadProjectFromFile(file, async () => {
+          if (granted) await rememberHandle(handle);
+          else { pendingHandle = handle; updateSaveIndicator(); }
+        });
+      } catch (e) {
+        if (e && e.name === 'AbortError') return;
+        logError('Open failed', e);
+        showBanner('Could not open that file. ' + (e.message || ''), 'error');
+      }
+      return;
+    }
+    $('project-file-input').value = '';
+    $('project-file-input').click();
+  }
+  function loadProjectFromFile(file, onLoaded) {
     if (!file) return;
     const mb = file.size / (1024 * 1024);
     const label = file.name || 'this project';
     if (mb > 8) {
-      if (!confirm(`This project is ${mb.toFixed(0)} MB, pictures included.\n\nKindleForge will show smaller previews and keep the full pictures for export. The browser’s quick autosave cannot hold a file this big — use Save Project for a copy you can move.\n\nOpen “${label}”?`)) return;
+      if (!confirm(`This project is ${mb.toFixed(0)} MB, pictures included.\n\nKindleForge will show smaller previews and keep the full pictures for export. Save writes the same file after you pick it once.\n\nOpen “${label}”?`)) return;
     } else if (!confirm(`Load “${label}”? This replaces the book on screen.`)) return;
     showBanner(mb > 8 ? `Reading ${mb.toFixed(0)} MB…` : 'Reading the project…');
     const reader = new FileReader();
@@ -2731,7 +2986,9 @@ ${nav.map((n) => `<li><a href="${n.href}">${escapeXml(n.title)}</a></li>`).join(
       setTimeout(async () => {
         try {
           const data = JSON.parse(reader.result);
+          reader.onload = null;
           await loadProjectObject(data);
+          if (onLoaded) await onLoaded();
           const name = data.book?.title || data.title || label;
           showToast(`Loaded ${name}.`);
           if (imageStore.total < BIG_BOOK_BYTES) hideBanner();
@@ -2767,7 +3024,10 @@ ${nav.map((n) => `<li><a href="${n.href}">${escapeXml(n.title)}</a></li>`).join(
     syncHeader();
     renderAll();
     resetHistory();
+    projectDirty = false;
     saveLocal();
+    writeRecovery();
+    updateSaveIndicator();
   }
   async function makePortable() {
     let n = 0;
@@ -2886,8 +3146,9 @@ ${nav.map((n) => `<li><a href="${n.href}">${escapeXml(n.title)}</a></li>`).join(
         'export-scroll': exportScroll,
         'export-epub': exportEPUB,
         'export-html': exportHTML,
-        'save-project': saveProjectFile,
-        'load-project': () => { $('project-file-input').value = ''; $('project-file-input').click(); },
+        'save-project': () => saveProjectFile(false),
+        'save-as': () => saveProjectFile(true),
+        'load-project': () => openProject(),
         'load-picture-demo': () => loadPictureDemo(false).catch(() => showToast('Could not load the sample. Use the local server.')),
         'load-fox-demo': loadFoxDemo,
         'make-portable': makePortable,
@@ -3120,7 +3381,7 @@ ${nav.map((n) => `<li><a href="${n.href}">${escapeXml(n.title)}</a></li>`).join(
       if (meta && e.key.toLowerCase() === 'z') { e.preventDefault(); if (e.shiftKey) redo(); else undo(); return; }
       if (meta && e.key.toLowerCase() === 'y') { e.preventDefault(); redo(); return; }
       if (meta && e.key.toLowerCase() === 's') { e.preventDefault(); saveProjectFile(); return; }
-      if (meta && e.key.toLowerCase() === 'o') { e.preventDefault(); $('project-file-input').click(); return; }
+      if (meta && e.key.toLowerCase() === 'o') { e.preventDefault(); openProject(); return; }
       if (meta && e.key.toLowerCase() === 'd') { e.preventDefault(); duplicateTextBox(); return; }
       if (meta && e.key === '0') { e.preventDefault(); zoomFit(); return; }
       if (meta && e.key === '1') { e.preventDefault(); setZoom(1); return; }
@@ -3198,7 +3459,10 @@ ${nav.map((n) => `<li><a href="${n.href}">${escapeXml(n.title)}</a></li>`).join(
     syncHeader();
     renderAll();
     resetHistory();
+    projectDirty = false;
     saveLocal();
+    writeRecovery();
+    updateSaveIndicator();
   }
   function helpText() {
     return `KindleForge picture books
@@ -3218,7 +3482,7 @@ The picture stays locked. Words are a separate layer you can drag.
 • PNG/JPG zip and the tall review JPG are for checking pages on a phone.
 • EPUB stays available. A book made only of picture pages exports as fixed-layout.
 
-Save Project packs everything into one .kindleforge.json. Older projects still open.
+Save asks once for a file, then Ctrl+S overwrites that same file. More → Save as… starts a new file. A changed book is also written about every two minutes and when you change pages. Older projects still open.
 
 Run with: python -m http.server 8000`;
   }
@@ -3227,12 +3491,20 @@ Run with: python -m http.server 8000`;
     const theme = localStorage.getItem('kindleforge-theme') || 'light';
     document.documentElement.dataset.theme = theme;
     bind();
+    window.addEventListener('error', (event) => logError(event.message, event.error));
+    window.addEventListener('unhandledrejection', (event) => logError(event.reason && event.reason.message || event.reason, event.reason));
     const bannerClose = $('app-banner-close');
     if (bannerClose) bannerClose.addEventListener('click', hideBanner);
+    setInterval(() => { if (projectDirty) void autosaveFile(); }, 120000);
+    window.addEventListener('pagehide', () => { try { saveLocal(); } catch (e) { /* the tab is closing */ } writeRecovery(); });
+    let openedNamed = false;
     try {
-      if (location.hash === '#picture-demo') await loadPictureDemo(true);
+      if (location.hash === '#picture-demo') { openedNamed = true; await loadPictureDemo(true); }
       else if (loadLocal()) await rehydrateAssets();
       else loadFoxDemoSilent();
+      await restoreSaveHandle();
+      if (!openedNamed) await restoreRecovery();
+      showStoredErrors();
     } catch (e) {
       console.warn(e);
       showBanner('Could not restore the last book. ' + (e.message || ''), 'error');
